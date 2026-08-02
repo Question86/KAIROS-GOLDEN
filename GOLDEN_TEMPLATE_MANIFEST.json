@@ -1,0 +1,387 @@
+{
+  "archive_id": "ARCHIVE_L0001",
+  "created_at": "2026-08-02T18:13:42Z",
+  "excluded": [
+    "developer project-task history",
+    "frozen provenance roots",
+    "derived SQLite and dynamic routers",
+    "local backups and caches"
+  ],
+  "files": [
+    {
+      "path": ".gitignore",
+      "sha256": "77c0044aee10bea960711199633acdf1e26d00b639d0e81613011206db5809ba",
+      "size": 531
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "b6dd8cb7d8d189969eafc280c02ea0faed162b72500998b63bce7c06d0a04df0",
+      "size": 943
+    },
+    {
+      "path": "kairos_harness/docs/CONTEXT_HEADER_SPEC.md",
+      "sha256": "ab555a9906b0ebc0f7349f5e735e7c2dc7fa596d0c10d105da745d4b0b48ade0",
+      "size": 6926
+    },
+    {
+      "path": "kairos_harness/docs/LLM_OPERATING_CONTRACT.md",
+      "sha256": "82d19c03ac9834b47aaef90c39edb384eea7432065a6f1a6ffd0ab74d6cb86a7",
+      "size": 2276
+    },
+    {
+      "path": "kairos_harness/docs/OPERATIONS.md",
+      "sha256": "b556c646d35a695e490ef890a5385390105e50861e3c9e9a18d6fc489737f44d",
+      "size": 7864
+    },
+    {
+      "path": "kairos_harness/docs/SYSTEM_SYNTHESIS.md",
+      "sha256": "38f7cf95cfd5698bebcdeb078d59d7a7e4feedffa178eb647eeb44e20f512b99",
+      "size": 6623
+    },
+    {
+      "path": "kairos_harness/kairos/__init__.py",
+      "sha256": "7343b0d2bcbffd47c7fbfed19b71a4eeb4de8460e3a856f559485247b3797a0b",
+      "size": 53
+    },
+    {
+      "path": "kairos_harness/kairos/__main__.py",
+      "sha256": "935a1c1166b0c1ea35a82256345000bf2c73ded718d77773bc27a71ecce28f7d",
+      "size": 48
+    },
+    {
+      "path": "kairos_harness/kairos/backup.py",
+      "sha256": "bf78df00b13b74e4389924ad120a67bd6f0bca268efebb18ffd4b2c98f84016f",
+      "size": 16088
+    },
+    {
+      "path": "kairos_harness/kairos/canonicals.py",
+      "sha256": "5a45e73b81c43c2ae65f62ab114f6cbc68882f1a4719ccd19ad816a5befcbf95",
+      "size": 22912
+    },
+    {
+      "path": "kairos_harness/kairos/cli.py",
+      "sha256": "8f7be734b2f43ffd115469bb997ef5b74617c99942f604375da9e6823cda0a44",
+      "size": 49500
+    },
+    {
+      "path": "kairos_harness/kairos/constants.py",
+      "sha256": "26603882be87f542590ee6e50822cbae7b5c44776609d5afda49b1370adfa170",
+      "size": 3567
+    },
+    {
+      "path": "kairos_harness/kairos/database.py",
+      "sha256": "08105a81a29613dae18732f0158d08d70c62f8f121a61e657afdfecc8233db89",
+      "size": 15077
+    },
+    {
+      "path": "kairos_harness/kairos/freshness.py",
+      "sha256": "3dcc61a2da786331b241a0f233b7d8544e75d87b37c29a705064e414d92fd137",
+      "size": 2071
+    },
+    {
+      "path": "kairos_harness/kairos/frontmatter.py",
+      "sha256": "60333d85bcde2fb904bc359780921faacf1234e31da8d8ebd5148d93cefcdc30",
+      "size": 11852
+    },
+    {
+      "path": "kairos_harness/kairos/goals.py",
+      "sha256": "2e90b1a3dafadf5039f3620753e11fcd82834000521b44b481c6348835d22cdb",
+      "size": 18062
+    },
+    {
+      "path": "kairos_harness/kairos/golden.py",
+      "sha256": "174f6d537c8d80f68b3ff79970ffed6b29a49c8481cd4dee04fe36e9976a63dd",
+      "size": 17406
+    },
+    {
+      "path": "kairos_harness/kairos/governance.py",
+      "sha256": "a8be3c05d33a13183a63ea6e277d3a575fff834d0685cf4bcb682d3c6f9ec3ad",
+      "size": 52942
+    },
+    {
+      "path": "kairos_harness/kairos/health.py",
+      "sha256": "434162b9de8e76214d8850e1a18ddb41740379b6c7013a1e93faab3f35c70543",
+      "size": 23092
+    },
+    {
+      "path": "kairos_harness/kairos/heartbeat.py",
+      "sha256": "1c2a9dec4e44cf0280cbc02fce9f3eabc52c7cd13e3807ca1d7153b4e798703c",
+      "size": 31249
+    },
+    {
+      "path": "kairos_harness/kairos/locking.py",
+      "sha256": "b1001f52129bfe17f2bef07ef4899d4c529546f15ccb7b96e3602acc37c34765",
+      "size": 2790
+    },
+    {
+      "path": "kairos_harness/kairos/loops.py",
+      "sha256": "0be186286a54f7434981d1bf0e4cb6cd8490d850334eca075e34db4eb38f3272",
+      "size": 30246
+    },
+    {
+      "path": "kairos_harness/kairos/promoter.py",
+      "sha256": "c99a44de09fa3fe62f600668eb700fa09f71f51fd21fc3abcee6fed2f32c42af",
+      "size": 22915
+    },
+    {
+      "path": "kairos_harness/kairos/query.py",
+      "sha256": "d00d9a62e8a733b7cd611bd6d334f3ba8ef4122b51040ed9b7e28790ff5eebb0",
+      "size": 6310
+    },
+    {
+      "path": "kairos_harness/kairos/readiness.py",
+      "sha256": "edf272b87d97979976c0b324e800bc6e35b812db0399e81c1c486c0ebe75af4c",
+      "size": 5011
+    },
+    {
+      "path": "kairos_harness/kairos/reconcile.py",
+      "sha256": "ac3d6cca357fdbf770e8235c557caca6a600cf7bf09007d3ce53b7cce8d42171",
+      "size": 4557
+    },
+    {
+      "path": "kairos_harness/kairos/recovery.py",
+      "sha256": "5a7ddbf8d2b03f7385eb32ee99e34a6673050871f7387817e5752e6e042a996f",
+      "size": 8704
+    },
+    {
+      "path": "kairos_harness/kairos/references.py",
+      "sha256": "d8280febd128d150a8b104f5d665baac72ba57c3154b21ffd3b3a7bbbd830d9d",
+      "size": 3594
+    },
+    {
+      "path": "kairos_harness/kairos/search.py",
+      "sha256": "3b9d125e649eea7161e40c23c76d45dcdcf21de8558b0701843bb17ae3fdb52a",
+      "size": 16292
+    },
+    {
+      "path": "kairos_harness/kairos/search_policy.py",
+      "sha256": "d5c3ed65bcd966e19fa85e6e42aaa00afcadf9608c9ebd32c328e5f26c022a27",
+      "size": 29794
+    },
+    {
+      "path": "kairos_harness/kairos/sections.py",
+      "sha256": "865259f96ff61904aada7a1dfa1c813f8b0bb66915528079af30bcdbd0fe864b",
+      "size": 3804
+    },
+    {
+      "path": "kairos_harness/kairos/templates.py",
+      "sha256": "68ecafed10a5e2b22d0f2b22d2ab9add1b31b66db41ce19bca8d4338bc12256f",
+      "size": 27669
+    },
+    {
+      "path": "kairos_harness/kairos/util.py",
+      "sha256": "a1b5ec35f9f1ac21b08e71df09d18b31a16b99deb2dafa02431dc565af4261d4",
+      "size": 2994
+    },
+    {
+      "path": "kairos_harness/kairos/workspace.py",
+      "sha256": "420029b91a0176bea61191e4a8ad10294f30e6b8ea0856a7a41cf3628a52b153",
+      "size": 30454
+    },
+    {
+      "path": "kairos_harness/pyproject.toml",
+      "sha256": "3d6732fdf823c9ca069972e4917fb2e86624f31d37cc779c20b29281a91e7fef",
+      "size": 369
+    },
+    {
+      "path": "kairos_harness/README.md",
+      "sha256": "b99a03e1ca4f700981ba0dab50f39e3f61a05f7f57e142d91cbe7908de903977",
+      "size": 6234
+    },
+    {
+      "path": "kairos_harness/schemas/context_header.schema.json",
+      "sha256": "3a74d9635eeeae1f383977527e8d2e9ab8d7de3e666ce7ccbf957a0ffa4a76a1",
+      "size": 4326
+    },
+    {
+      "path": "kairos_harness/schemas/goal_graph.schema.json",
+      "sha256": "bc4bfb22a6e15a7fada0a62abb358e001e80beffb9f7429d8e41ae248c8aef68",
+      "size": 2564
+    },
+    {
+      "path": "kairos_harness/schemas/heartbeat_receipt.schema.json",
+      "sha256": "f2d4b4c93281d72a308598e12992c5b187b89b998e95b365ff67026fc840c84b",
+      "size": 2067
+    },
+    {
+      "path": "kairos_harness/scripts/kairos.ps1",
+      "sha256": "65c373228a4efa063d05da2228e10893278d085a543b74998ef382eb945f36b3",
+      "size": 514
+    },
+    {
+      "path": "kairos_harness/templates/BUG_TEMPLATE.md",
+      "sha256": "0c41921222d5b7cdfa8b6a797196bdb18a3a14944ff214f44e827b733a8747e3",
+      "size": 2537
+    },
+    {
+      "path": "kairos_harness/templates/CODE_TEMPLATE.md",
+      "sha256": "369c3c803b686e820ceca0ecc5b714840cd59bb3182efad784a2ec3a33b0e50c",
+      "size": 2418
+    },
+    {
+      "path": "kairos_harness/templates/DECISION_TEMPLATE.md",
+      "sha256": "feabd442c7670f8705775affb05b72c23f10435f504bb0d77e88883c1456a7b6",
+      "size": 2886
+    },
+    {
+      "path": "kairos_harness/templates/REPORT_TEMPLATE.md",
+      "sha256": "65ba715479a3be3f87716d7d22a962c9e82ca0a466fa5c8e07c35058fb32d1e9",
+      "size": 2355
+    },
+    {
+      "path": "kairos_harness/templates/RESEARCH_TEMPLATE.md",
+      "sha256": "be8967ff0291345c9ad7b5f4a8f0e126366b107a469f3bfff916cfbd3194c00a",
+      "size": 2879
+    },
+    {
+      "path": "kairos_harness/templates/ROUTER_TEMPLATE.md",
+      "sha256": "ee69ffcc636e87d3d6676c6582208936610d42882abcc3b02cfc39c8a351e39b",
+      "size": 1553
+    },
+    {
+      "path": "kairos_harness/templates/TASK_TEMPLATE.md",
+      "sha256": "15b622dde2bb9683afd7de63f9b6ffa35748c4a88c9276ff059948d317b21ce8",
+      "size": 2400
+    },
+    {
+      "path": "kairos_harness/tests/support.py",
+      "sha256": "9fa85c0e775bc60c9a61782203bc123043232cef8871315e88364e78d5c10cfd",
+      "size": 942
+    },
+    {
+      "path": "kairos_harness/tests/test_alpha_hardening.py",
+      "sha256": "efe85a9b2bce58dd987e77716bc80c49323753925ef437a3e1cadca873fbee5f",
+      "size": 15832
+    },
+    {
+      "path": "kairos_harness/tests/test_english_contract.py",
+      "sha256": "ddee3cbcedeaf9b8344ee9383dd5473ec0e73cad9b7a6cef8bedb8671332015c",
+      "size": 2685
+    },
+    {
+      "path": "kairos_harness/tests/test_frontmatter_sections.py",
+      "sha256": "8da269078334409c9fb81f32cadd3362d41f87d68b4abb04ce372d0095f834b9",
+      "size": 4085
+    },
+    {
+      "path": "kairos_harness/tests/test_golden_template.py",
+      "sha256": "d4ef3a44f0ae15786c1419ad00151e431997828c4bb441aa6a3e7911bb6c434f",
+      "size": 4939
+    },
+    {
+      "path": "kairos_harness/tests/test_governance_enforcement.py",
+      "sha256": "086f337347f018446132e3910342af6361d45d48c906843a59c976a5cf53ac5f",
+      "size": 25206
+    },
+    {
+      "path": "kairos_harness/tests/test_heartbeat_finalization.py",
+      "sha256": "e8a574887ed5115eedc5dba77c33ce34d9ec010552c1b93b9df5e3b7ae85f2dd",
+      "size": 10483
+    },
+    {
+      "path": "kairos_harness/tests/test_loop_transition.py",
+      "sha256": "f3380a1a0f92c897eb6e830e38a68cdf45c25f5853f15780d289b4210c4f620a",
+      "size": 15194
+    },
+    {
+      "path": "kairos_harness/tests/test_project_kickoff.py",
+      "sha256": "8779182ab33de6eed25868cab091bf72999bf1eceae6722861e1f5b05bcb3da8",
+      "size": 12033
+    },
+    {
+      "path": "kairos_harness/tests/test_promotion_search.py",
+      "sha256": "bd57f48b365bc3e41fb90c421e5f7fc3ab5cf8634ea36872fb66171fff4e1a32",
+      "size": 4578
+    },
+    {
+      "path": "kairos_harness/tests/test_revision_recovery.py",
+      "sha256": "55b42e8217990ce4f64fcaf37ea2248a2a67d738de385c18a216743bb6f8897e",
+      "size": 2472
+    },
+    {
+      "path": "kairos_harness/tests/test_search_order_policy.py",
+      "sha256": "d292792a2456e0b63a3688a19daee48d92e2f7486e395aeb405887dacadb205b",
+      "size": 13053
+    },
+    {
+      "path": "kairos_harness/tests/test_task_routing_invariants.py",
+      "sha256": "d1753fc9c1c9b9a74c011b2f536f866840ceae545927560d6dd1b3cbc868017c",
+      "size": 3904
+    },
+    {
+      "path": "kairos_harness/tests/test_workspace_safety.py",
+      "sha256": "afeb79dfbe663587f901e3ba42687d53da01dab8a336ec525298fb84005d874f",
+      "size": 667
+    },
+    {
+      "path": "kairos_workspace/.kairos/config.json",
+      "sha256": "ccd689b5554082cfa0665ad8683a85860a6fb8b66f10547702aab843bead43cd",
+      "size": 591
+    },
+    {
+      "path": "kairos_workspace/.kairos/golden_seal.json",
+      "sha256": "c4bb39d64fd6b17d2cae8ca0ab487edbc5fcd2a9c2e52c913d0bd123f4e5a783",
+      "size": 1341
+    },
+    {
+      "path": "kairos_workspace/.kairos/workspace.lock",
+      "sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+      "size": 1
+    },
+    {
+      "path": "kairos_workspace/AGENTS.md",
+      "sha256": "3c6cb4457a45e6f97d34cef5b4aacfc99c4470f4686db8ae08c5e45142cdca2f",
+      "size": 5252
+    },
+    {
+      "path": "kairos_workspace/archive/ARCHIVE_L0001.md",
+      "sha256": "94cf18e4970ca2b68c70c492053c77fc3bcce5cf6ce398660439d680f07c67da",
+      "size": 5579
+    },
+    {
+      "path": "kairos_workspace/bugs/BUG_0001_L001_V01.md",
+      "sha256": "2a1203a5ba387341cd6e5e2b713d7352611e4d3beee176519dfb367bc5ec305b",
+      "size": 4263
+    },
+    {
+      "path": "kairos_workspace/code/CODE_0001_L001_V01.md",
+      "sha256": "7e8a20bcd773a444009b820f0e61552182f0c2f42a08e2ef5c462be27455f0a4",
+      "size": 4634
+    },
+    {
+      "path": "kairos_workspace/docs/KAIROS_STARTER_ARCHITECTURE.md",
+      "sha256": "71f836ee8a0d9d11ab32b8d0e67a6fd0f727a086bb4a445e85e49ec51e43e395",
+      "size": 5426
+    },
+    {
+      "path": "kairos_workspace/goals/GOAL_KAIROS_001.json",
+      "sha256": "15a859555e7fcf62d549d63ebd063d53af2044fd579c5b4aeb92b23e65beafc7",
+      "size": 2182
+    },
+    {
+      "path": "kairos_workspace/reports/report_GOLDEN_BOOTSTRAP_L001_V01.md",
+      "sha256": "2878550dd4965b8662d033fe70db757376ecc76f3876a09ea46e0352bee0ee15",
+      "size": 4062
+    },
+    {
+      "path": "kairos_workspace/reports/report_TASK_0001_L001_V01.md",
+      "sha256": "66f970adf218af9127b4efc07be27f2cd12f3aac5759310c9c04bd36c0f871cf",
+      "size": 4224
+    },
+    {
+      "path": "kairos_workspace/tasks/task_TASK_0001.md",
+      "sha256": "23014d19f8f8852e214cfb9f45d8164723171113da264698002bed5b194515e1",
+      "size": 4678
+    },
+    {
+      "path": "README.md",
+      "sha256": "e8cf72253d16bf430e55545ef28083c839a5e8436d5c6e603941563a62e61535",
+      "size": 736
+    }
+  ],
+  "golden_loop": 1,
+  "golden_seal_sha256": "c4bb39d64fd6b17d2cae8ca0ab487edbc5fcd2a9c2e52c913d0bd123f4e5a783",
+  "schema": "kairos-golden-template-manifest/v1",
+  "source_commit": "dd845af51c093448a96712d88a284ae172072d40",
+  "workspace_id": "KAIROS_GOLDEN_STARTER"
+}

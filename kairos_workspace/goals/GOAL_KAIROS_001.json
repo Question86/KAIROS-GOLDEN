@@ -1,0 +1,56 @@
+{
+  "created_at": "2026-08-02T18:13:40Z",
+  "id": "GOAL_KAIROS_001",
+  "milestones": [
+    {
+      "criteria": [
+        {
+          "description": "All canonical document types have valid first-window context headers and stable section anchors.",
+          "evidence_required": "Schema and template tests plus successful promotion receipts.",
+          "id": "CRIT_KAIROS_001",
+          "required_artifact_types": [
+            "report",
+            "code"
+          ],
+          "state": "completed"
+        },
+        {
+          "description": "Changed documents become searchable in the same heartbeat without a full workspace scan.",
+          "evidence_required": "Incremental heartbeat receipt and idempotent replay test.",
+          "id": "CRIT_KAIROS_002",
+          "required_artifact_types": [
+            "report"
+          ],
+          "state": "completed"
+        },
+        {
+          "description": "English causal questions retrieve the correct document section and its typed context chase.",
+          "evidence_required": "Gold-query retrieval results and search-contract receipts.",
+          "id": "CRIT_KAIROS_003",
+          "required_artifact_types": [
+            "report"
+          ],
+          "state": "completed"
+        },
+        {
+          "description": "Finalization remains blocked while promotions fail or required criteria lack evidence.",
+          "evidence_required": "Fail-closed finalization integration test.",
+          "id": "CRIT_KAIROS_004",
+          "required_artifact_types": [
+            "report"
+          ],
+          "state": "completed"
+        }
+      ],
+      "depends_on": [],
+      "id": "MILESTONE_KAIROS_01",
+      "objective": "Establish deterministic context headers, typed references, section indexing, and question-oriented retrieval.",
+      "state": "completed",
+      "title": "Context-native knowledge substrate"
+    }
+  ],
+  "objective": "Run long autonomous loops with same-heartbeat documentation, section-addressable knowledge promotion, adaptive context acquisition, and fail-closed finalization.",
+  "schema": "kairos-goal/v1",
+  "state": "completed",
+  "title": "Operational KAIROS context harness"
+}
