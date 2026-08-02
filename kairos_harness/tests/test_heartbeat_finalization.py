@@ -7,6 +7,7 @@ from unittest.mock import patch
 from kairos.cli import build_parser, execute
 from kairos.governance import governance_status
 from kairos.heartbeat import finalize_workspace, load_runtime_state, run_heartbeat
+from kairos.promoter import PromotionError
 from kairos.templates import report_document
 from kairos.templates import task_document
 from kairos.util import atomic_write_json, atomic_write_text, utc_now
@@ -95,6 +96,46 @@ class HeartbeatFinalizationTests(WorkspaceTestCase):
         self.assertEqual(result["governance_action"]["phase"], "CLOSURE")
         self.assertTrue((self.workspace / "archive" / "ARCHIVE_L0001.md").exists())
         self.assertEqual(load_runtime_state(self.workspace)["lifecycle"], "FINALIZED")
+
+    def test_failed_archive_promotion_is_recovered_by_idempotent_finalize_retry(self) -> None:
+        self._write_success_report()
+        self._set_required()
+        _, close_code = execute(
+            build_parser().parse_args(
+                ["close-task", "--workspace", str(self.workspace), "--id", "TASK_0001"]
+            )
+        )
+        self.assertEqual(close_code, 0)
+
+        from kairos import heartbeat as heartbeat_module
+
+        original_promote = heartbeat_module.promote_document
+
+        def fail_archive_once(path, *args, **kwargs):
+            if path.name == "ARCHIVE_L0001.md":
+                raise PromotionError("simulated archive promotion interruption")
+            return original_promote(path, *args, **kwargs)
+
+        with patch("kairos.heartbeat.promote_document", side_effect=fail_archive_once):
+            blocked, blocked_code = execute(
+                build_parser().parse_args(["finalize", "--workspace", str(self.workspace)])
+            )
+        self.assertEqual(blocked_code, 2)
+        self.assertEqual(blocked["status"], "BLOCKED")
+        archive = self.workspace / "archive" / "ARCHIVE_L0001.md"
+        marker = self.workspace / ".kairos" / "finalization_pending" / "ARCHIVE_L0001.json"
+        self.assertTrue(archive.is_file())
+        self.assertTrue(marker.is_file())
+
+        retried, retry_code = execute(
+            build_parser().parse_args(["finalize", "--workspace", str(self.workspace)])
+        )
+        self.assertEqual(retry_code, 0)
+        self.assertEqual(retried["status"], "FINALIZED")
+        self.assertEqual(retried["recovered_unpromoted_archives"], ["archive/ARCHIVE_L0001.md"])
+        self.assertTrue(archive.is_file())
+        self.assertFalse(marker.exists())
+        self.assertEqual(governance_status(self.workspace)["open_quarantine"], 0)
 
     def test_close_task_requires_evidence_and_deactivates_completed_task(self) -> None:
         self._write_success_report()

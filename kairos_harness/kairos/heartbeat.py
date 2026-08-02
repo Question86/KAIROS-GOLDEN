@@ -40,6 +40,9 @@ class HeartbeatError(RuntimeError):
     pass
 
 
+FINALIZATION_PENDING_SCHEMA = "kairos-finalization-pending-archive/v1"
+
+
 def load_runtime_state(workspace: Path) -> dict[str, Any]:
     path = workspace / ".kairos" / "runtime_state.json"
     state = read_json(path)
@@ -440,6 +443,96 @@ def _run_heartbeat_locked(
     return receipt
 
 
+def _pending_finalization_archive_path(workspace: Path, loop: int) -> Path:
+    return workspace / ".kairos" / "finalization_pending" / f"ARCHIVE_L{loop:04d}.json"
+
+
+def _record_pending_finalization_archive(
+    workspace: Path,
+    *,
+    loop: int,
+    archive_id: str,
+    heartbeat_id: str,
+) -> None:
+    atomic_write_json(
+        _pending_finalization_archive_path(workspace, loop),
+        {
+            "schema": FINALIZATION_PENDING_SCHEMA,
+            "loop": loop,
+            "archive_id": archive_id,
+            "archive_path": f"archive/{archive_id}.md",
+            "heartbeat_id": heartbeat_id,
+            "created_at": utc_now(),
+        },
+    )
+
+
+def _clear_pending_finalization_archive(workspace: Path, loop: int) -> None:
+    marker = _pending_finalization_archive_path(workspace, loop)
+    if marker.exists():
+        marker.unlink()
+
+
+def _recover_pending_finalization_archives(
+    workspace: Path,
+    database: KnowledgeDatabase,
+) -> list[str]:
+    """Discard only a finalizer-owned archive that never reached the artifact ledger.
+
+    The marker is written before the archive source. It makes a crash or a failed
+    promotion recoverable without treating an arbitrary file in archive/ as trusted.
+    A promoted archive is immutable and is never removed here.
+    """
+    directory = workspace / ".kairos" / "finalization_pending"
+    if not directory.is_dir():
+        return []
+    recovered: list[str] = []
+    for marker in sorted(directory.glob("ARCHIVE_L*.json")):
+        pending = read_json(marker, default={}) or {}
+        loop = pending.get("loop")
+        archive_id = pending.get("archive_id")
+        archive_path = pending.get("archive_path")
+        if (
+            pending.get("schema") != FINALIZATION_PENDING_SCHEMA
+            or not isinstance(loop, int)
+            or loop < 1
+            or archive_id != f"ARCHIVE_L{loop:04d}"
+            or archive_path != f"archive/{archive_id}.md"
+            or marker.name != f"{archive_id}.json"
+        ):
+            raise HeartbeatError(f"invalid pending finalization archive marker: {marker}")
+        source = workspace / "archive" / f"{archive_id}.md"
+        connection = database.connect(read_only=True)
+        try:
+            artifact = connection.execute(
+                "SELECT artifact_id,path,state FROM artifacts WHERE artifact_id=? OR path=?",
+                (archive_id, archive_path),
+            ).fetchone()
+        finally:
+            connection.close()
+        if artifact:
+            if (
+                artifact["artifact_id"] != archive_id
+                or artifact["path"] != archive_path
+                or artifact["state"] != "finalized"
+                or not source.is_file()
+            ):
+                raise HeartbeatError(
+                    f"pending finalization archive has inconsistent promoted state: {archive_id}"
+                )
+            marker.unlink()
+            continue
+        if source.exists():
+            if not source.is_file():
+                raise HeartbeatError(
+                    f"pending finalization archive is not a file: {archive_path}"
+                )
+            source.unlink()
+            recovered.append(archive_path)
+        marker.unlink()
+    return recovered
+
+
 def _archive_document(workspace: Path, database: KnowledgeDatabase, loop: int, heartbeat: dict[str, Any]) -> tuple[Path, str]:
     artifact_id = f"ARCHIVE_L{loop:04d}"
     path = workspace / "archive" / f"ARCHIVE_L{loop:04d}.md"
@@ -542,6 +635,12 @@ def _archive_document(workspace: Path, database: KnowledgeDatabase, loop: int, h
             f"\n- {artifact_count - len(artifacts)} additional artifact(s) remain in the verified metadata base; "
             "use chronology or exact-identifier search."
         )
+    _record_pending_finalization_archive(
+        workspace,
+        loop=loop,
+        archive_id=artifact_id,
+        heartbeat_id=heartbeat["heartbeat_id"],
+    )
     content = render_document(
         metadata,
         artifact_id,
@@ -590,8 +689,10 @@ def finalize_workspace(workspace: Path) -> dict[str, Any]:
 
 def _finalize_workspace_locked(workspace: Path) -> dict[str, Any]:
     workspace = workspace.resolve()
-    heartbeat = run_heartbeat(workspace, requested_mode="verify", use_reconciliation=True)
     database = KnowledgeDatabase(database_path(workspace))
+    database.initialize()
+    recovered_archives = _recover_pending_finalization_archives(workspace, database)
+    heartbeat = run_heartbeat(workspace, requested_mode="verify", use_reconciliation=True)
     readiness = evaluate_finalization_readiness(
         database,
         source_check={
@@ -630,6 +731,7 @@ def _finalize_workspace_locked(workspace: Path) -> dict[str, Any]:
             [archive_path],
             updated_at=utc_now(),
         )
+        _clear_pending_finalization_archive(workspace, loop)
     except Exception as exc:
         state["lifecycle"] = "BLOCKED"
         state["updated_at"] = utc_now()
@@ -639,6 +741,7 @@ def _finalize_workspace_locked(workspace: Path) -> dict[str, Any]:
             "schema": "kairos-finalization-result/v1",
             "status": "BLOCKED",
             "heartbeat_id": heartbeat["heartbeat_id"],
+            "recovered_unpromoted_archives": recovered_archives,
             "blockers": [{"type": "archive_collision", "error": str(exc)}],
             "created_at": utc_now(),
         }
@@ -681,6 +784,7 @@ def _finalize_workspace_locked(workspace: Path) -> dict[str, Any]:
         "finalization_id": finalization_id,
         "loop": loop,
         "heartbeat_id": heartbeat["heartbeat_id"],
+        "recovered_unpromoted_archives": recovered_archives,
         "archive_id": archive_id,
         "archive_path": workspace_relative(archive_path, workspace),
         "archive_sha256": archive_receipt["content_sha256"],

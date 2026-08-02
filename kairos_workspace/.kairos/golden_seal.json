@@ -1,21 +1,21 @@
 {
   "archive_id": "ARCHIVE_L0001",
   "archive_path": "archive/ARCHIVE_L0001.md",
-  "archive_sha256": "94cf18e4970ca2b68c70c492053c77fc3bcce5cf6ce398660439d680f07c67da",
-  "created_at": "2026-08-02T18:13:42Z",
+  "archive_sha256": "6b179df4922042dd3e872f825eef86d75f074a5ee9b482efd5b551e14a64d8f3",
+  "created_at": "2026-08-02T20:45:27Z",
   "loop": 1,
   "schema": "kairos-golden-seal/v1",
-  "source_commit": "dd845af51c093448a96712d88a284ae172072d40",
-  "source_finalization_id": "FIN_a690b09b81465de0578083d0a1b1fa3b",
+  "source_commit": "ac9d317880be0613a1189c14e716e54734e15e4f",
+  "source_finalization_id": "FIN_e8e5f96b547f841bfed26f73cf49d3d6",
   "sources": {
-    "AGENTS.md": "3c6cb4457a45e6f97d34cef5b4aacfc99c4470f4686db8ae08c5e45142cdca2f",
-    "archive/ARCHIVE_L0001.md": "94cf18e4970ca2b68c70c492053c77fc3bcce5cf6ce398660439d680f07c67da",
-    "bugs/BUG_0001_L001_V01.md": "2a1203a5ba387341cd6e5e2b713d7352611e4d3beee176519dfb367bc5ec305b",
-    "code/CODE_0001_L001_V01.md": "7e8a20bcd773a444009b820f0e61552182f0c2f42a08e2ef5c462be27455f0a4",
-    "docs/KAIROS_STARTER_ARCHITECTURE.md": "71f836ee8a0d9d11ab32b8d0e67a6fd0f727a086bb4a445e85e49ec51e43e395",
-    "goals/GOAL_KAIROS_001.json": "15a859555e7fcf62d549d63ebd063d53af2044fd579c5b4aeb92b23e65beafc7",
-    "reports/report_GOLDEN_BOOTSTRAP_L001_V01.md": "2878550dd4965b8662d033fe70db757376ecc76f3876a09ea46e0352bee0ee15",
-    "reports/report_TASK_0001_L001_V01.md": "66f970adf218af9127b4efc07be27f2cd12f3aac5759310c9c04bd36c0f871cf",
-    "tasks/task_TASK_0001.md": "23014d19f8f8852e214cfb9f45d8164723171113da264698002bed5b194515e1"
+    "AGENTS.md": "e9412dd6f5e6072b48a691e7537213804fb9dfe7b80dfbf3f92f21ca64afd2ac",
+    "archive/ARCHIVE_L0001.md": "6b179df4922042dd3e872f825eef86d75f074a5ee9b482efd5b551e14a64d8f3",
+    "bugs/BUG_0001_L001_V01.md": "de17e4cfe108770158d5b694da8e2b3772e3901d2e45d39cd0d8aeb78c5629d6",
+    "code/CODE_0001_L001_V01.md": "1e524c66648ef0c178e13fe1b475e74b89bf881f0e21a1db68bbdb28a7a2a5b5",
+    "docs/KAIROS_STARTER_ARCHITECTURE.md": "e4172f471feb3456e8e4adf9b004d5fb4618f82eade2b11bd8f70a502b70f85c",
+    "goals/GOAL_KAIROS_001.json": "b7eea3b2bfa1cd1c5fd3b45574a34b5da09a16fbabfe35865a28fcd88a1c201f",
+    "reports/report_GOLDEN_BOOTSTRAP_L001_V01.md": "8b276afa5017c4c548af33268d48bf1f8920dbdb1a4074b674d3dcd34344b8d0",
+    "reports/report_TASK_0001_L001_V01.md": "144535ec4f0eaeb7edd5d4b064e7e79d8ec870e1ced0561a9663c542d6a9f3e6",
+    "tasks/task_TASK_0001.md": "735c8f528405e972ceb36f150195f85c142c6c91e3ac0d16e4b0cb133809aa23"
   }
 }

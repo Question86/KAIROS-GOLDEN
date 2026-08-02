@@ -56,6 +56,8 @@ COMMAND_PHASES = {
     "new-loop": "ROLLOVER",
     "project-kickoff": "ROLLOVER",
     "export-golden": "MUTATION",
+    "starter-check": "VERIFICATION",
+    "goal-prompt": "COMMAND_INTAKE",
     "new-task": "TASK_FORMULATION",
     "new-report": "MUTATION",
     "new-bug": "MUTATION",

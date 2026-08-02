@@ -11,7 +11,12 @@ from .backup import create_backup, restore_drill, verify_backup
 from .database import KnowledgeDatabase
 from .freshness import ensure_workspace_fresh
 from .frontmatter import render_frontmatter, split_frontmatter
-from .golden import build_golden_template, materialize_golden_seed
+from .golden import (
+    build_golden_template,
+    materialize_golden_seed,
+    render_goal_prompt,
+    verify_golden_template,
+)
 from .goals import coverage_report, validate_goal
 from .governance import (
     COMMAND_PHASES,
@@ -341,6 +346,19 @@ def build_parser() -> argparse.ArgumentParser:
     export_golden.add_argument("--target", required=True)
     export_golden.add_argument("--source-commit", required=True)
 
+    starter_check = sub.add_parser(
+        "starter-check",
+        help="Verify the immutable source-only golden starter before project kickoff",
+    )
+    starter_check.add_argument("--workspace", required=True)
+
+    goal_prompt = sub.add_parser(
+        "goal-prompt",
+        help="Render a safe portable /goal prompt from one plain project idea",
+    )
+    goal_prompt.add_argument("--workspace", required=True)
+    goal_prompt.add_argument("--idea", required=True)
+
     new_task = sub.add_parser("new-task", help="Create a task contract and promote it in a heartbeat")
     new_task.add_argument("--workspace", required=True)
     new_task.add_argument("--id", required=True)
@@ -456,11 +474,17 @@ def build_parser() -> argparse.ArgumentParser:
 GOVERNED_COMMANDS = set(COMMAND_PHASES)
 MUTATING_COMMANDS = set(GOVERNED_COMMANDS)
 assert_command_classification(GOVERNED_COMMANDS)
+SOURCE_ONLY_STARTER_COMMANDS = {"starter-check", "goal-prompt"}
 
 
 def execute(args: argparse.Namespace) -> tuple[Any, int]:
     command = args.command
     workspace = _workspace(args.workspace)
+    # These are deliberately narrow pre-governance commands. A fresh golden starter
+    # has no database or active task yet, so it cannot issue a normal action permit.
+    # Both commands are read-only and verify the sealed source set before returning.
+    if command in SOURCE_ONLY_STARTER_COMMANDS:
+        return _execute_unlocked(args, workspace)
     if command in GOVERNED_COMMANDS:
         with workspace_write_lock(workspace):
             if (
@@ -523,6 +547,10 @@ def _execute_unlocked(args: argparse.Namespace, workspace: Path) -> tuple[Any, i
     command = args.command
     if command == "init":
         return initialize_workspace(workspace, workspace_id=args.workspace_id), 0
+    if command == "starter-check":
+        return verify_golden_template(workspace), 0
+    if command == "goal-prompt":
+        return render_goal_prompt(workspace, args.idea), 0
     if command == "rebuild-derived":
         result = rebuild_derived_state(workspace)
         return result, 0 if result["verified"] else 2
@@ -1127,7 +1155,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         payload, code = execute(args)
-        _print(payload)
+        if args.command == "goal-prompt" and code == 0 and isinstance(payload, dict):
+            print(payload["prompt"], end="")
+        else:
+            _print(payload)
         return code
     except Exception as exc:
         _print({"error": type(exc).__name__, "message": str(exc), "command": args.command})
