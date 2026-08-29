@@ -11,7 +11,7 @@ loop = 1
 task = "TASK_0001"
 goal = "GOAL_KAIROS_001"
 milestone = "MILESTONE_KAIROS_01"
-updated_at = "2026-08-02T20:45:22Z"
+updated_at = "2026-08-29T15:11:01Z"
 capsule = "KAIROS workspace initialized; end-to-end validation remains pending."
 claim_boundary = "This report describes the initialized harness; only explicitly listed checks count as validation evidence."
 entities = ["REPORT_TASK_0001_L001_V01", "TASK_0001", "KAIROS", "SQLite FTS5", "promotion receipt"]
@@ -47,9 +47,9 @@ required_top_k = 5
 ## CONTEXT INDEX
 
 - [`s-outcome`](#s-outcome) — KAIROS workspace initialized; end-to-end validation remains pending.
-- [`s-work`](#s-work) — - Context-header document grammar - Section-level FTS and typed relation graph - Goal and criterion coverage tables - Promotion events and receipts - Heartbeat and search command surfaces
-- [`s-evidence`](#s-evidence) — Current state: initialization evidence only. Unit, integration, retrieval, and crash-boundary checks must be recorded before this report can become `success`.
-- [`s-limitations`](#s-limitations) — - Run the complete test suite. - Execute the prepared workspace heartbeat. - Verify query contracts and goal coverage. - Keep all non-workspace sources outside the active authority boundary.
+- [`s-work`](#s-work) — - Context-header document grammar - Section-level FTS and typed relation graph - Goal and criterion coverage tables - Promotion events and r
+- [`s-evidence`](#s-evidence) — Current state: initialization evidence only. Unit, integration, retrieval, and crash-boundary checks must be recorded before this report can
+- [`s-limitations`](#s-limitations) — - Run the complete test suite. - Execute the prepared workspace heartbeat. - Verify query contracts and goal coverage. - Keep all non-worksp
 - [`s-next`](#s-next) — Use `python -m kairos heartbeat --workspace <path>` and inspect its receipt before any finalization attempt.
 
 <a id="s-outcome"></a>

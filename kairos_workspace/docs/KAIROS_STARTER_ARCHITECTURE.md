@@ -7,7 +7,7 @@ state = "active"
 authority = "architecture_authority"
 workspace = "KAIROS_GOLDEN_STARTER"
 route = "KAIROS_GOLDEN_STARTER/KAIROS_STARTER_ARCHITECTURE"
-updated_at = "2026-08-02T20:45:22Z"
+updated_at = "2026-08-29T15:11:01Z"
 capsule = "Clean starter self-model for KAIROS authority, content placement, metadata retrieval, loop finalization, and atomic project kickoff."
 claim_boundary = "This document owns starter architecture and placement; live state, task contracts, and promoted evidence own their scoped claims."
 entities = ["KAIROS_STARTER_ARCHITECTURE", "KAIROS", "SQLite FTS5"]
@@ -63,7 +63,7 @@ required_top_k = 1
 - [`s-placement`](#s-placement) — Place each durable claim by epistemic role and connect it with typed workspace-relative references.
 - [`s-database`](#s-database) — SQLite stores artifacts, stable sections, natural-language handles, typed relations, goal coverage, receipts, and governance evidence.
 - [`s-lifecycle`](#s-lifecycle) — Task and goal closure make a loop ready; finalize creates its mandatory archive, receipt, and verified backup.
-- [`s-kickoff`](#s-kickoff) — One Human-triggered project-kickoff contract creates fresh goal and task sources and activates the next loop without reopening the predecessor.
+- [`s-kickoff`](#s-kickoff) — One Human-triggered project-kickoff contract creates fresh goal and task sources and activates the next loop without reopening the predecess
 
 <a id="s-entry"></a>
 ## LLM ENTRY

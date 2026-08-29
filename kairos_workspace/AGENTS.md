@@ -7,7 +7,7 @@ state = "active"
 authority = "operating_contract"
 workspace = "KAIROS_GOLDEN_STARTER"
 route = "KAIROS_GOLDEN_STARTER/KAIROS_OPERATING_CONTRACT"
-updated_at = "2026-08-02T20:45:22Z"
+updated_at = "2026-08-29T15:11:01Z"
 capsule = "Mandatory English-only, metadata-first operating contract for every agent working inside this KAIROS workspace."
 claim_boundary = "This canonical routes context and state; substantive evidence remains in the referenced task, report, bug, code, or archive sections."
 entities = ["KAIROS_OPERATING_CONTRACT", "KAIROS_GOLDEN_STARTER", "KAIROS"]
@@ -46,9 +46,9 @@ required_top_k = 5
 ## CONTEXT INDEX
 
 - [`s-language`](#s-language) — All KAIROS source code, metadata, documents, queries, receipts, tests, logs, and generated artifacts must be written in English.
-- [`s-operating-loop`](#s-operating-loop) — Orient, select the active criterion, acquire bounded context, act, document, promote, verify, update coverage, and checkpoint in every material heartbeat.
-- [`s-authority`](#s-authority) — Authority is question-scoped: operating rules, live state, permitted transitions, work scope, factual evidence, architecture, and retrieval each have a distinct owner.
-- [`s-context`](#s-context) — Open the returned artifact section first, then chase only typed prerequisite, cause, implementation, evidence, validation, or supersession relations needed by the query frame.
+- [`s-operating-loop`](#s-operating-loop) — Orient, select the active criterion, acquire bounded context, act, document, promote, verify, update coverage, and checkpoint in every mater
+- [`s-authority`](#s-authority) — Authority is question-scoped: operating rules, live state, permitted transitions, work scope, factual evidence, architecture, and retrieval
+- [`s-context`](#s-context) — Open the returned artifact section first, then chase only typed prerequisite, cause, implementation, evidence, validation, or supersession r
 - [`s-finalization`](#s-finalization) — Finalization is forbidden while a required criterion lacks validated evidence or any promotion event is pending or failed.
 
 <a id="s-language"></a>

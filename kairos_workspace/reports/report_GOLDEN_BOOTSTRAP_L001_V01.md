@@ -11,7 +11,7 @@ loop = 1
 task = "TASK_0001"
 goal = "GOAL_KAIROS_001"
 milestone = "MILESTONE_KAIROS_01"
-updated_at = "2026-08-02T20:45:23Z"
+updated_at = "2026-08-29T15:11:02Z"
 capsule = "The generic KAIROS starter passed its deterministic bootstrap checks."
 claim_boundary = "This report describes the initialized harness; only explicitly listed checks count as validation evidence."
 entities = ["REPORT_GOLDEN_BOOTSTRAP_L001_V01", "TASK_0001", "KAIROS", "SQLite FTS5", "promotion receipt"]
@@ -48,8 +48,8 @@ required_top_k = 5
 
 - [`s-outcome`](#s-outcome) — The generic KAIROS starter passed its deterministic bootstrap checks.
 - [`s-work`](#s-work) — Validated the starter architecture, heartbeat, metadata projection, archive gate, and recovery boundary.
-- [`s-evidence`](#s-evidence) — The harness regression suite and clean-room template tests own executable proof; this generic report supplies the seed goal evidence classes.
-- [`s-limitations`](#s-limitations) — - Run the complete test suite. - Execute the prepared workspace heartbeat. - Verify query contracts and goal coverage. - Keep all non-workspace sources outside the active authority boundary.
+- [`s-evidence`](#s-evidence) — The harness regression suite and clean-room template tests own executable proof; this generic report supplies the seed goal evidence classes
+- [`s-limitations`](#s-limitations) — - Run the complete test suite. - Execute the prepared workspace heartbeat. - Verify query contracts and goal coverage. - Keep all non-worksp
 - [`s-next`](#s-next) — Use `python -m kairos heartbeat --workspace <path>` and inspect its receipt before any finalization attempt.
 
 <a id="s-outcome"></a>

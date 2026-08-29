@@ -7,7 +7,7 @@
     "_LOOP_GATE.md",
     "_SESSION.md"
   ],
-  "created_at": "2026-08-02T20:45:22Z",
+  "created_at": "2026-08-29T15:11:01Z",
   "database": ".kairos/kairos.db",
   "document_roots": [
     "tasks",
@@ -21,6 +21,7 @@
   ],
   "fullscan_policy": "recovery_only",
   "governance_enforcement": "required",
+  "imported_workspace_ids": [],
   "inspection_root": "..",
   "reconcile_extensions": [
     ".md"

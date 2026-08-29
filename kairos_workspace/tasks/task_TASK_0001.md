@@ -11,7 +11,7 @@ loop = 1
 task = "TASK_0001"
 goal = "GOAL_KAIROS_001"
 milestone = "MILESTONE_KAIROS_01"
-updated_at = "2026-08-02T20:45:24Z"
+updated_at = "2026-08-29T15:11:03Z"
 capsule = "Validate the prepared heartbeat, same-loop promotion, section-level causal retrieval, and fail-closed finalization flow before connecting a live project archive."
 claim_boundary = "This task defines required work and evidence; it does not prove implementation or acceptance."
 entities = ["TASK_0001", "GOAL_KAIROS_001", "MILESTONE_KAIROS_01", "KAIROS"]
@@ -47,7 +47,7 @@ required_top_k = 5
 
 ## CONTEXT INDEX
 
-- [`s-objective`](#s-objective) — Validate the prepared heartbeat, same-loop promotion, section-level causal retrieval, and fail-closed finalization flow before connecting a live project archive.
+- [`s-objective`](#s-objective) — Validate the prepared heartbeat, same-loop promotion, section-level causal retrieval, and fail-closed finalization flow before connecting a
 - [`s-context`](#s-context) — The task is positioned inside the active goal and milestone route.
 - [`s-dependencies`](#s-dependencies) — Work requires a valid goal graph, writable KAIROS runtime state, and resolvable canonical pointers.
 - [`s-acceptance`](#s-acceptance) — Completion requires explicit evidence for every listed criterion.
