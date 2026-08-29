@@ -82,7 +82,17 @@ def collect_references(metadata: dict, sections: Iterable[object]) -> list[tuple
     return collected
 
 
-def validate_reference_targets(workspace: Path, references: Iterable[tuple[str | None, Reference]]) -> None:
+def validate_reference_targets(
+    workspace: Path,
+    references: Iterable[tuple[str | None, Reference]],
+    *,
+    resolve: bool = True,
+) -> None:
+    # A document imported from another workspace carries pointers that are relative to that
+    # workspace. They cannot resolve here and are recorded as external instead: the row is
+    # written, the target is not followed. External references are leaves.
+    if not resolve:
+        return
     for _, ref in references:
         target = resolve_workspace_path(workspace, ref.target_path)
         if not target.exists() or not target.is_file():

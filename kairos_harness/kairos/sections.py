@@ -51,19 +51,28 @@ def _section_capsule(content: str) -> str:
     raise SectionError("every indexed section requires a blockquote capsule or a first summary line")
 
 
-def parse_sections(body: str, *, header_bytes: int) -> list[Section]:
-    if "## CONTEXT INDEX" not in body:
+def parse_sections(body: str, *, header_bytes: int, ingested: bool = False) -> list[Section]:
+    # The context index is a restatement of the section map for a reader opening the raw
+    # file. An ingested document is reached through the database, which serves that map from
+    # the parsed anchors and capsules, so the restatement is not required of it. The
+    # deviation stays visible: the corpus census reports every document that omits it.
+    if not ingested and "## CONTEXT INDEX" not in body:
         raise SectionError("document must contain '## CONTEXT INDEX' immediately after its title")
     matches = list(ANCHOR_HEADING_RE.finditer(body))
     if not matches:
         raise SectionError("document contains no stable <a id=\"s-*\"></a> section anchors")
     if len(matches) > MAX_SECTIONS:
         raise SectionError(f"document contains {len(matches)} sections; maximum is {MAX_SECTIONS}")
-    first_window = header_bytes + len(body[: matches[0].start()].encode("utf-8"))
-    if first_window > FIRST_WINDOW_BYTES:
-        raise SectionError(
-            f"header plus context index uses {first_window} bytes; first indexed section must begin by byte {FIRST_WINDOW_BYTES}"
-        )
+    # The first-window contract buys a cheap first read of the raw file. An ingested document
+    # is never read that way: it is reached through the database and opened at a named
+    # anchor, so its header is calibration surface rather than a first read. Enforcing the
+    # window there would only forbid the structure that removes the read.
+    if not ingested:
+        first_window = header_bytes + len(body[: matches[0].start()].encode("utf-8"))
+        if first_window > FIRST_WINDOW_BYTES:
+            raise SectionError(
+                f"header plus context index uses {first_window} bytes; first indexed section must begin by byte {FIRST_WINDOW_BYTES}"
+            )
     seen: set[str] = set()
     sections: list[Section] = []
     for position, match in enumerate(matches):

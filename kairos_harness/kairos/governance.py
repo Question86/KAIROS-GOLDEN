@@ -44,6 +44,7 @@ COMMAND_PHASES = {
     "reconcile": "VERIFICATION",
     "heartbeat": "VERIFICATION",
     "search": "METADATA_ROUTING",
+    "graph": "METADATA_ROUTING",
     "source-permit": "SOURCE_INSPECTION",
     "source-search": "SOURCE_INSPECTION",
     "goal-sync": "TASK_FORMULATION",
@@ -66,6 +67,7 @@ COMMAND_PHASES = {
     "new-research": "MUTATION",
     "close-task": "CLOSURE",
     "action-permit": "COMMAND_INTAKE",
+    "revoke-permit": "COMMAND_INTAKE",
     "attribute-change": "MUTATION",
     "governance-enable": "VERIFICATION",
     "governance-status": "VERIFICATION",
@@ -1232,6 +1234,12 @@ def _supersede_reconciled_external_permits(
             elif artifact:
                 reconciled = False
                 break
+        # Both halves are load-bearing. Requiring an observed change is what keeps a permit
+        # alive for an edit that has not happened yet: at issuance the target is typically
+        # absent and unpromoted, which already satisfies reconciliation. Retiring on
+        # reconciliation alone would drop a fresh permit before its edit, and the edit would
+        # then arrive unattributed. A permit that can never observe a change is withdrawn
+        # explicitly through revoke-permit instead.
         if not changed or not reconciled:
             continue
         updated = connection.execute(
@@ -1245,6 +1253,69 @@ def _supersede_reconciled_external_permits(
         if updated == 1:
             superseded.append(str(row["permit_id"]))
     return superseded
+
+
+def revoke_action_permit(
+    workspace: Path,
+    *,
+    permit_id: str,
+    reason: str,
+) -> dict[str, Any]:
+    """Withdraw an outstanding permit whose edit will not be made.
+
+    A permit is retired automatically only once its edit has landed and reconciled. A permit
+    that will never see that edit - issued by mistake, or for bytes that were already in
+    place - would otherwise hold the workspace closed until its TTL expires with no remedy.
+    Withdrawal is therefore explicit, attributable and refused for a permit that is already
+    backing a running action.
+    """
+    if not isinstance(reason, str) or not 12 <= len(reason.strip()) <= 1000:
+        raise GovernanceError("revocation reason must contain 12 to 1000 characters")
+    database = _database(workspace)
+    with database.transaction() as connection:
+        row = connection.execute(
+            "SELECT permit_id,status,command_name,action_id FROM action_permits WHERE permit_id=?",
+            (permit_id,),
+        ).fetchone()
+        if not row:
+            raise GovernanceError(f"action permit does not exist: {permit_id}")
+        if row["status"] != "ACTIVE":
+            raise GovernanceError(
+                f"only an ACTIVE permit can be withdrawn; {permit_id} is {row['status']}"
+            )
+        running = connection.execute(
+            """
+            SELECT action_id FROM governed_action_receipts
+            WHERE permit_id=? AND status='RUNNING'
+            """,
+            (permit_id,),
+        ).fetchone()
+        if running:
+            raise GovernanceError(
+                f"permit {permit_id} backs running action {running['action_id']} and cannot be withdrawn"
+            )
+        revoked_at = utc_now()
+        connection.execute(
+            "UPDATE action_permits SET status='REVOKED',consumed_at=? WHERE permit_id=?",
+            (revoked_at, permit_id),
+        )
+    _record_violation(
+        workspace,
+        action_type="EXTERNAL_EDIT_PERMIT_REVOKED",
+        command_name=str(row["command_name"]),
+        phase="COMMAND_INTAKE",
+        scope=runtime_scope(workspace),
+        message=f"action permit withdrawn before use: {permit_id}",
+        details={"permit_id": permit_id, "reason": reason.strip()},
+    )
+    return {
+        "schema": "kairos-permit-revocation/v1",
+        "permit_id": permit_id,
+        "command_name": row["command_name"],
+        "status": "REVOKED",
+        "reason": reason.strip(),
+        "revoked_at": revoked_at,
+    }
 
 
 def governance_status(

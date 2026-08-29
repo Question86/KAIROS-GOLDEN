@@ -330,12 +330,45 @@ class AlphaHardeningTests(WorkspaceTestCase):
                 milestone_id="MILESTONE_KAIROS_01",
             ),
         )
-        with self.assertRaisesRegex(PromotionError, "does not match configured workspace"):
+        with self.assertRaisesRegex(PromotionError, "nor a declared imported workspace"):
             promote_document(
                 path,
                 self.workspace,
                 KnowledgeDatabase(database_path(self.workspace)),
             )
+
+    def test_promotion_accepts_declared_imported_workspace(self) -> None:
+        config_path = self.workspace / ".kairos" / "config.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config["imported_workspace_ids"] = ["FOREIGN_WORKSPACE"]
+        atomic_write_text(config_path, json.dumps(config, indent=2, sort_keys=True) + "\n")
+        path = self.workspace / "research" / "RESEARCH_IMPORTED_WORKSPACE_001.md"
+        atomic_write_text(
+            path,
+            research_document(
+                research_id="RESEARCH_IMPORTED_WORKSPACE_001",
+                task_id="TASK_FOREIGN_0001",
+                title="Declared import acceptance",
+                question="Can a declared origin keep its own scope identifiers?",
+                source_uri="urn:kairos:test:imported-workspace",
+                source_kind="workspace",
+                source_fact="The origin scope is recorded, not resolved.",
+                interpretation="A declared origin owns its own identifier namespace.",
+                workspace_id="FOREIGN_WORKSPACE",
+                task_path="tasks/task_TASK_FOREIGN_0001.md",
+                goal_id="GOAL_FOREIGN_0001",
+                milestone_id="MILESTONE_FOREIGN_01",
+            ),
+        )
+        receipt = promote_document(
+            path,
+            self.workspace,
+            KnowledgeDatabase(database_path(self.workspace)),
+        )
+        # The goal, milestone and task above exist in no local contract. Promotion succeeds
+        # because a declared origin is recorded rather than resolved.
+        self.assertTrue(receipt["verified"])
+        self.assertEqual(receipt["external_origin"], "FOREIGN_WORKSPACE")
 
 
 if __name__ == "__main__":

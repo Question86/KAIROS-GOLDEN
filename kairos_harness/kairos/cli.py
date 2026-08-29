@@ -18,6 +18,7 @@ from .golden import (
     verify_golden_template,
 )
 from .goals import coverage_report, validate_goal
+from .graph import DEFAULT_GRAPH_ROWS, run_graph_query
 from .governance import (
     COMMAND_PHASES,
     assert_command_classification,
@@ -27,6 +28,7 @@ from .governance import (
     finish_cli_action,
     governance_status,
     issue_external_edit_permit,
+    revoke_action_permit,
 )
 from .heartbeat import finalize_workspace, run_heartbeat, status_report
 from .health import health_audit
@@ -274,6 +276,14 @@ def build_parser() -> argparse.ArgumentParser:
     action_permit.add_argument("--reason", required=True)
     action_permit.add_argument("--ttl-seconds", type=int, default=900)
 
+    revoke_permit = sub.add_parser(
+        "revoke-permit",
+        help="Withdraw an outstanding action permit whose edit will not be made",
+    )
+    revoke_permit.add_argument("--workspace", required=True)
+    revoke_permit.add_argument("--permit", required=True)
+    revoke_permit.add_argument("--reason", required=True)
+
     attribute_change = sub.add_parser(
         "attribute-change",
         help="Review, attribute, and promote the current bytes of one quarantined path",
@@ -292,6 +302,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Switch a clean active workspace from audit migration to required enforcement",
     )
     governance_enable.add_argument("--workspace", required=True)
+
+    graph = sub.add_parser("graph", help="Bounded read over the normalized graph layer")
+    graph.add_argument("--workspace", required=True)
+    graph.add_argument("--artifact", default="", help="Every declared structure of one document")
+    graph.add_argument("--node", default="", help="Edges naming one entity in either position")
+    graph.add_argument("--asset", default="", help="Who produces or consumes one asset")
+    graph.add_argument("--predicate", default="", help="Edges carrying one predicate")
+    graph.add_argument("--vocabulary", action="store_true", help="Values outside their declared set")
+    graph.add_argument("--integrity", action="store_true", help="Rows whose evidence anchor does not resolve")
+    graph.add_argument("--census", action="store_true", help="Deterministic graph-layer census")
+    graph.add_argument("--limit", type=int, default=DEFAULT_GRAPH_ROWS)
 
     goal_sync = sub.add_parser("goal-sync", help="Validate and synchronize goal graph files")
     goal_sync.add_argument("--workspace", required=True)
@@ -566,6 +587,12 @@ def _execute_unlocked(args: argparse.Namespace, workspace: Path) -> tuple[Any, i
             reason=args.reason,
             ttl_seconds=args.ttl_seconds,
         ), 0
+    if command == "revoke-permit":
+        return revoke_action_permit(
+            workspace,
+            permit_id=args.permit,
+            reason=args.reason,
+        ), 0
     if command == "attribute-change":
         attribution = attribute_quarantined_change(
             workspace,
@@ -713,6 +740,21 @@ def _execute_unlocked(args: argparse.Namespace, workspace: Path) -> tuple[Any, i
             permit_id=args.permit,
         )
         return result, 0 if result["status"] == "VERIFIED" else 2
+    if command == "graph":
+        return (
+            run_graph_query(
+                _database(workspace),
+                artifact=args.artifact,
+                node=args.node,
+                asset=args.asset,
+                predicate=args.predicate,
+                vocabulary=args.vocabulary,
+                integrity=args.integrity,
+                show_census=args.census,
+                limit=args.limit,
+            ),
+            0,
+        )
     if command == "goal-sync":
         result = run_heartbeat(
             workspace,

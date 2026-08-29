@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .constants import MAX_INDEX_CAPSULE_CHARS
 from .frontmatter import render_frontmatter
 from .util import utc_now
 
@@ -26,7 +27,10 @@ def pointer(
 def render_document(metadata: dict[str, Any], title: str, sections: list[dict[str, str]]) -> str:
     index_lines = ["## CONTEXT INDEX", ""]
     for section in sections:
-        index_lines.append(f"- [`{section['id']}`](#{section['id']}) — {section['capsule']}")
+        summary = " ".join(section["capsule"].split())
+        if len(summary) > MAX_INDEX_CAPSULE_CHARS:
+            summary = summary[:MAX_INDEX_CAPSULE_CHARS].rstrip()
+        index_lines.append(f"- [`{section['id']}`](#{section['id']}) — {summary}")
     body = [f"# {title}", "", *index_lines, ""]
     for section in sections:
         body.extend(

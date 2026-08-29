@@ -12,6 +12,9 @@ class DatabaseError(RuntimeError):
     pass
 
 
+COMPATIBLE_SCHEMA_VERSIONS = {"kairos-db/v1", DATABASE_SCHEMA_VERSION}
+
+
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_meta (
     key TEXT PRIMARY KEY,
@@ -399,6 +402,92 @@ CREATE TABLE IF NOT EXISTS quarantine_entries (
 CREATE INDEX IF NOT EXISTS idx_quarantine_status
 ON quarantine_entries(status,created_at,path);
 
+-- Normalized graph layer.
+--
+-- A graph-bearing document declares typed facts about entities that are not documents:
+-- sources, headers, symbols, types, produced assets, schemas, contracts and failure
+-- literals. These four tables hold those facts verbatim. Column names mirror the header
+-- keys so the projection stays mechanical and no interpretation happens on the way in.
+--
+-- artifact_id is always the declaring document. The controlled vocabularies live in
+-- constants.py and are not enforced by CHECK constraints on purpose: a value outside the
+-- declared set is stored as written and found by query, so a single deviating row never
+-- costs a whole document. ordinal preserves the declared order and keeps a repeated local
+-- identifier from colliding.
+
+CREATE TABLE IF NOT EXISTS graph_relations (
+    artifact_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL,
+    subject TEXT NOT NULL,
+    predicate TEXT NOT NULL,
+    object TEXT NOT NULL,
+    object_kind TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    evidence_target TEXT NOT NULL,
+    evidence TEXT NOT NULL,
+    PRIMARY KEY (artifact_id, ordinal),
+    FOREIGN KEY (artifact_id) REFERENCES artifacts(artifact_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_graph_relations_object ON graph_relations(object, predicate);
+CREATE INDEX IF NOT EXISTS idx_graph_relations_subject ON graph_relations(subject, predicate);
+CREATE INDEX IF NOT EXISTS idx_graph_relations_predicate ON graph_relations(predicate, object_kind);
+
+CREATE TABLE IF NOT EXISTS graph_contracts (
+    artifact_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL,
+    contract_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    statement TEXT NOT NULL,
+    failure_or_effect TEXT NOT NULL,
+    evidence_target TEXT NOT NULL,
+    PRIMARY KEY (artifact_id, ordinal),
+    FOREIGN KEY (artifact_id) REFERENCES artifacts(artifact_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_graph_contracts_kind ON graph_contracts(kind);
+CREATE INDEX IF NOT EXISTS idx_graph_contracts_subject ON graph_contracts(subject);
+CREATE INDEX IF NOT EXISTS idx_graph_contracts_failure ON graph_contracts(failure_or_effect);
+
+-- asset_id is the produced or consumed thing, not a KAIROS document id.
+CREATE TABLE IF NOT EXISTS graph_artifacts (
+    artifact_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL,
+    asset_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    operation TEXT NOT NULL,
+    producer_or_consumer TEXT NOT NULL,
+    schema_or_type TEXT NOT NULL,
+    hash_bound INTEGER NOT NULL,
+    commit_bound INTEGER NOT NULL,
+    evidence_target TEXT NOT NULL,
+    PRIMARY KEY (artifact_id, ordinal),
+    FOREIGN KEY (artifact_id) REFERENCES artifacts(artifact_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_graph_artifacts_asset ON graph_artifacts(asset_id);
+CREATE INDEX IF NOT EXISTS idx_graph_artifacts_party ON graph_artifacts(producer_or_consumer);
+CREATE INDEX IF NOT EXISTS idx_graph_artifacts_schema ON graph_artifacts(schema_or_type);
+CREATE INDEX IF NOT EXISTS idx_graph_artifacts_binding ON graph_artifacts(hash_bound, commit_bound);
+
+CREATE TABLE IF NOT EXISTS graph_drift (
+    artifact_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL,
+    drift_id TEXT NOT NULL,
+    historical TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    classification TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    status TEXT NOT NULL,
+    evidence_target TEXT NOT NULL,
+    PRIMARY KEY (artifact_id, ordinal),
+    FOREIGN KEY (artifact_id) REFERENCES artifacts(artifact_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_graph_drift_class ON graph_drift(classification, status);
+CREATE INDEX IF NOT EXISTS idx_graph_drift_subject ON graph_drift(subject);
+
 CREATE TABLE IF NOT EXISTS search_policy_violations (
     violation_id TEXT PRIMARY KEY,
     action_type TEXT NOT NULL,
@@ -438,9 +527,13 @@ class KnowledgeDatabase:
         try:
             connection.executescript(SCHEMA_SQL)
             row = connection.execute("SELECT value FROM schema_meta WHERE key='schema_version'").fetchone()
-            if row and row["value"] != DATABASE_SCHEMA_VERSION:
+            # The graph layer is purely additive: every table it introduces is created by
+            # CREATE TABLE IF NOT EXISTS above, so an earlier database is carried forward
+            # without a data migration. Only an unknown version fails closed.
+            if row and row["value"] not in COMPATIBLE_SCHEMA_VERSIONS:
                 raise DatabaseError(
-                    f"database schema is {row['value']!r}; expected {DATABASE_SCHEMA_VERSION!r}"
+                    f"database schema is {row['value']!r}; expected one of "
+                    f"{sorted(COMPATIBLE_SCHEMA_VERSIONS)}"
                 )
             connection.execute(
                 "INSERT OR REPLACE INTO schema_meta(key,value) VALUES('schema_version',?)",

@@ -409,6 +409,68 @@ class GovernanceEnforcementTests(WorkspaceTestCase):
             connection.close()
         self.assertEqual(status, "SUPERSEDED")
 
+    def test_permit_for_an_edit_that_never_happens_can_be_withdrawn(self) -> None:
+        # A permit is retired automatically only once its edit lands and reconciles. One
+        # that can never see that edit would otherwise hold every later freshness check
+        # closed until its TTL expires, so withdrawal has to be explicit.
+        self._set_required()
+        permit, code = execute(
+            build_parser().parse_args(
+                [
+                    "action-permit",
+                    "--workspace",
+                    str(self.workspace),
+                    "--path",
+                    "research/RESEARCH_NEVER_WRITTEN_001.md",
+                    "--reason",
+                    "Issue a permit for an edit that is then abandoned.",
+                ]
+            )
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(governance_status(self.workspace)["active_external_edit_permits"], 1)
+        result, code = execute(
+            build_parser().parse_args(
+                [
+                    "revoke-permit",
+                    "--workspace",
+                    str(self.workspace),
+                    "--permit",
+                    permit["permit_id"],
+                    "--reason",
+                    "The planned edit will not be made after all.",
+                ]
+            )
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(result["status"], "REVOKED")
+        settled = governance_status(self.workspace)
+        self.assertEqual(settled["active_external_edit_permits"], 0)
+        connection = self._database().connect(read_only=True)
+        try:
+            status = connection.execute(
+                "SELECT status FROM action_permits WHERE permit_id=?",
+                (permit["permit_id"],),
+            ).fetchone()["status"]
+        finally:
+            connection.close()
+        self.assertEqual(status, "REVOKED")
+        # A withdrawn permit is spent: it cannot be withdrawn twice.
+        with self.assertRaisesRegex(GovernanceError, "only an ACTIVE permit"):
+            execute(
+                build_parser().parse_args(
+                    [
+                        "revoke-permit",
+                        "--workspace",
+                        str(self.workspace),
+                        "--permit",
+                        permit["permit_id"],
+                        "--reason",
+                        "A second withdrawal must not succeed.",
+                    ]
+                )
+            )
+
     def test_unpermitted_direct_write_is_quarantined_then_explicitly_attributed(self) -> None:
         self._set_required()
         identifier = "RESEARCH_GOVERNANCE_QUARANTINE_001"

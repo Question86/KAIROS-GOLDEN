@@ -14,6 +14,12 @@ The first model read should answer four questions without scanning the body:
 - UTF-8 TOML frontmatter begins at byte zero with `+++`.
 - The rendered header is at most 3,072 bytes.
 - The first stable indexed section begins by byte 4,096.
+
+Both budgets apply to documents KAIROS generates, where a cheap first read is the whole
+point. They are not imposed on an **ingested** document — one that declares a foreign origin
+workspace, or that carries a normalized graph layer. Such a document is reached through the
+database and opened at a named anchor, never scanned from byte zero, so the budget would
+only forbid the structure that removes the read. See `INGESTED_DOCUMENT_SPEC.md`.
 - Every `##` content heading has a stable `<a id="s-..."></a>` anchor.
 - The context index appears immediately after the document title.
 - Every indexed section starts with a concise blockquote capsule.
@@ -143,7 +149,7 @@ Criterion IDs are executable metadata too. Promotion rejects an unknown criterio
 - milestones per goal: 256;
 - criteria per goal: 4,096;
 - sections per document: 128;
-- section body: 256 KiB;
+- section body: 1 MiB, sized for a source-ledger section;
 - collected references: 256;
 - header references: 8;
 - answer handles: 10;

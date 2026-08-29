@@ -458,6 +458,10 @@ def initialize_workspace(workspace: Path, *, workspace_id: str = "KAIROS_WORKSPA
         "canonical_files": DEFAULT_CANONICAL_FILES,
         "reconcile_extensions": [".md"],
         "inspection_root": ".",
+        # Origin workspaces this workspace accepts documents from. Empty by default: an
+        # undeclared origin fails closed. A document from a declared origin keeps its own
+        # goal, milestone and task identifiers, which are recorded rather than resolved.
+        "imported_workspace_ids": [],
         "fullscan_policy": "recovery_only",
         "governance_enforcement": "required",
         "created_at": utc_now(),

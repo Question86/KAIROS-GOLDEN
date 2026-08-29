@@ -11,10 +11,13 @@ from .constants import (
     AUTHORITIES,
     DOCUMENT_TYPES,
     DOCUMENT_TYPE_AUTHORITIES,
+    GRAPH_HEADER_KEYS,
     LIFECYCLE_STATES,
     MAX_ANSWER_HANDLES,
     MAX_CAPSULE_CHARS,
     MAX_CLAIM_BOUNDARY_CHARS,
+    MAX_GRAPH_ENTITIES,
+    MAX_GRAPH_HEADER_BYTES,
     MAX_HEADER_BYTES,
     MAX_PRIMARY_REFS,
     SCHEMA_VERSION,
@@ -25,12 +28,18 @@ class HeaderError(ValueError):
     pass
 
 
+def is_graph_bearing(metadata: dict[str, Any]) -> bool:
+    """A header that declares any normalized graph structure is machine calibration."""
+    return any(key in metadata for key in GRAPH_HEADER_KEYS)
+
+
 @dataclass(frozen=True)
 class ParsedFrontmatter:
     metadata: dict[str, Any]
     body: str
     raw_header: str
     header_bytes: int
+    graph_bearing: bool = False
 
 
 REQUIRED_KEYS = (
@@ -79,15 +88,25 @@ def split_frontmatter(text: str) -> ParsedFrontmatter:
         raise HeaderError("frontmatter closing delimiter '+++' is missing")
     raw_header = normalized[4:closing]
     header_bytes = len(("+++\n" + raw_header + "\n+++\n").encode("utf-8"))
-    if header_bytes > MAX_HEADER_BYTES:
-        raise HeaderError(f"frontmatter uses {header_bytes} bytes; maximum is {MAX_HEADER_BYTES}")
+    # The absolute ceiling is checked before parsing so an oversized header cannot be used
+    # to exhaust the TOML parser. The tighter routing budget needs the document class and
+    # is therefore applied once the header is parsed.
+    if header_bytes > MAX_GRAPH_HEADER_BYTES:
+        raise HeaderError(f"frontmatter uses {header_bytes} bytes; maximum is {MAX_GRAPH_HEADER_BYTES}")
     try:
         metadata = tomllib.loads(raw_header)
     except tomllib.TOMLDecodeError as exc:
         raise HeaderError(f"invalid TOML frontmatter: {exc}") from exc
+    graph_bearing = is_graph_bearing(metadata)
     body = normalized[closing + len("\n+++\n") :]
     validate_metadata(metadata)
-    return ParsedFrontmatter(metadata=metadata, body=body, raw_header=raw_header, header_bytes=header_bytes)
+    return ParsedFrontmatter(
+        metadata=metadata,
+        body=body,
+        raw_header=raw_header,
+        header_bytes=header_bytes,
+        graph_bearing=graph_bearing,
+    )
 
 
 def validate_metadata(metadata: dict[str, Any]) -> None:
@@ -156,11 +175,14 @@ def validate_metadata(metadata: dict[str, Any]) -> None:
     boundary = metadata["claim_boundary"]
     if not isinstance(boundary, str) or not boundary.strip() or len(boundary) > MAX_CLAIM_BOUNDARY_CHARS:
         raise HeaderError(f"claim_boundary must contain 1-{MAX_CLAIM_BOUNDARY_CHARS} characters")
+    # A graph-bearing header lists its direct graph neighbours in entities, so the routing
+    # budget of 32 is replaced by the graph budget for that class only.
+    entity_limit = MAX_GRAPH_ENTITIES if is_graph_bearing(metadata) else 32
     for key in ("entities", "facets", "criteria", "does_not_answer"):
         value = metadata.get(key, [])
         if not isinstance(value, list) or any(not isinstance(item, str) or not item.strip() for item in value):
             raise HeaderError(f"{key} must be an array of non-empty strings")
-        limits = {"entities": 32, "facets": 32, "criteria": 64, "does_not_answer": 16}
+        limits = {"entities": entity_limit, "facets": 32, "criteria": 64, "does_not_answer": 16}
         if len(value) > limits[key] or len(value) != len(set(value)):
             raise HeaderError(f"{key} must contain at most {limits[key]} unique values")
         if any(len(item) > 160 for item in value):
@@ -227,6 +249,14 @@ def _toml_value(value: Any) -> str:
 
 def render_frontmatter(metadata: dict[str, Any]) -> str:
     validate_metadata(metadata)
+    # KAIROS renders only the documents it generates, and it never generates a graph
+    # layer. Rendering one would silently drop it, so refuse instead of losing evidence.
+    if is_graph_bearing(metadata):
+        present = sorted(key for key in GRAPH_HEADER_KEYS if key in metadata)
+        raise HeaderError(
+            "cannot render a graph-bearing header; the normalized graph layer would be "
+            f"dropped: {', '.join(present)}"
+        )
     lines = ["+++"]
     emitted: set[str] = set()
     for key in PREFERRED_KEY_ORDER:

@@ -10,6 +10,7 @@ from .constants import (
     DYNAMIC_CANONICAL_FILES,
     MAX_DOCUMENT_BYTES,
     MAX_GENERATED_RECEIPT_FILES,
+    MAX_HEADER_BYTES,
 )
 from .frontmatter import ParsedFrontmatter, split_frontmatter
 from .query import fts_match, tokenize
@@ -30,6 +31,111 @@ class PromotionError(RuntimeError):
     pass
 
 
+# Header array -> table, and the columns each row contributes. A column names the header
+# keys it accepts, first match wins, so a document may spell one field either way without
+# losing the value. Adding a fifth structure is a change to this table, not to the code
+# below it. Table and column names come from here only and are never taken from a document.
+GRAPH_PROJECTIONS: tuple[tuple[str, str, tuple[tuple[str, tuple[str, ...]], ...]], ...] = (
+    (
+        "relations",
+        "graph_relations",
+        (
+            ("subject", ("subject",)),
+            ("predicate", ("predicate",)),
+            ("object", ("object",)),
+            ("object_kind", ("object_kind",)),
+            ("scope", ("scope",)),
+            ("evidence_target", ("evidence_target",)),
+            ("evidence", ("evidence",)),
+        ),
+    ),
+    (
+        "contracts",
+        "graph_contracts",
+        (
+            ("contract_id", ("id",)),
+            ("kind", ("kind",)),
+            ("subject", ("subject",)),
+            ("statement", ("statement",)),
+            ("failure_or_effect", ("failure_or_effect",)),
+            ("evidence_target", ("evidence_target",)),
+        ),
+    ),
+    (
+        "artifacts",
+        "graph_artifacts",
+        (
+            ("asset_id", ("id",)),
+            ("role", ("role",)),
+            ("operation", ("operation",)),
+            ("producer_or_consumer", ("producer_or_consumer",)),
+            ("schema_or_type", ("schema_or_type",)),
+            ("hash_bound", ("hash_bound",)),
+            ("commit_bound", ("commit_bound",)),
+            ("evidence_target", ("evidence_target",)),
+        ),
+    ),
+    (
+        "drift_records",
+        "graph_drift",
+        (
+            ("drift_id", ("id",)),
+            ("historical", ("historical",)),
+            ("subject", ("subject",)),
+            ("classification", ("classification",)),
+            ("summary", ("summary",)),
+            ("status", ("status",)),
+            ("evidence_target", ("current_evidence_target", "evidence_target")),
+        ),
+    ),
+)
+
+_GRAPH_BOOLEAN_COLUMNS = {"hash_bound", "commit_bound"}
+
+
+def _graph_cell(column: str, raw: Any) -> Any:
+    if column in _GRAPH_BOOLEAN_COLUMNS:
+        return 1 if raw is True else 0
+    if raw is None:
+        return ""
+    return raw if isinstance(raw, str) else json_dumps(raw, pretty=False)
+
+
+def project_graph_layer(connection: Any, artifact_id: str, metadata: dict[str, Any]) -> dict[str, int]:
+    """Write the declared graph structures verbatim and return one count per table.
+
+    Values are stored as written. Controlled vocabularies are not enforced here: a value
+    outside the declared set is a finding to be queried, not a reason to lose a document.
+    """
+    counts: dict[str, int] = {}
+    for header_key, table, columns in GRAPH_PROJECTIONS:
+        connection.execute(f"DELETE FROM {table} WHERE artifact_id=?", (artifact_id,))
+        rows = metadata.get(header_key, [])
+        if not isinstance(rows, list):
+            raise PromotionError(f"{header_key} must be an array of tables")
+        names = ",".join(("artifact_id", "ordinal", *(column for column, _ in columns)))
+        placeholders = ",".join("?" for _ in range(len(columns) + 2))
+        for ordinal, row in enumerate(rows, 1):
+            if not isinstance(row, dict):
+                raise PromotionError(f"{header_key}[{ordinal}] must be a table")
+            values: list[Any] = [artifact_id, ordinal]
+            for column, keys in columns:
+                raw = next((row[key] for key in keys if key in row), None)
+                values.append(_graph_cell(column, raw))
+            connection.execute(f"INSERT INTO {table}({names}) VALUES({placeholders})", values)
+        # Count from the table, not from the loop: the receipt must state what the database
+        # holds, not what the projection intended to write.
+        stored = connection.execute(
+            f"SELECT count(*) FROM {table} WHERE artifact_id=?", (artifact_id,)
+        ).fetchone()[0]
+        if int(stored) != len(rows):
+            raise PromotionError(
+                f"{table} stored {stored} of {len(rows)} declared rows for {artifact_id}"
+            )
+        counts[table] = int(stored)
+    return counts
+
+
 @dataclass(frozen=True)
 class PreparedDocument:
     path: Path
@@ -39,6 +145,20 @@ class PreparedDocument:
     frontmatter: ParsedFrontmatter
     sections: tuple[Section, ...]
     references: tuple[tuple[str | None, Reference], ...]
+    external_origin: str = ""
+
+
+def _external_origin(workspace: Path, metadata: dict[str, Any]) -> str:
+    """Return the foreign workspace id when the document was imported, else empty.
+
+    Derived from the document itself: a header that declares another workspace owns its
+    own pointer namespace, which this workspace cannot resolve.
+    """
+    from .workspace import load_config
+
+    declared = str(metadata.get("workspace", "")).strip()
+    host = str(load_config(workspace).get("workspace_id", "")).strip()
+    return declared if declared and host and declared != host else ""
 
 
 def prepare_document(path: Path, workspace: Path) -> PreparedDocument:
@@ -49,10 +169,25 @@ def prepare_document(path: Path, workspace: Path) -> PreparedDocument:
         raise PromotionError(f"document uses {size} bytes; maximum is {MAX_DOCUMENT_BYTES}: {path}")
     text = path.read_text(encoding="utf-8")
     frontmatter = split_frontmatter(text)
-    sections = parse_sections(frontmatter.body, header_bytes=frontmatter.header_bytes)
+    external_origin = _external_origin(workspace, frontmatter.metadata)
+    # The first-window budget protects the cost of opening a document KAIROS itself wrote.
+    # An ingested document is never opened that way: it is reached through the database and
+    # read at a named anchor. Carrying a graph layer implies the same thing, so either
+    # property lifts the budget; a locally authored routing document keeps it.
+    ingested = bool(external_origin) or frontmatter.graph_bearing
+    if not ingested and frontmatter.header_bytes > MAX_HEADER_BYTES:
+        raise PromotionError(
+            f"frontmatter uses {frontmatter.header_bytes} bytes; "
+            f"maximum is {MAX_HEADER_BYTES} for a locally authored document: {path}"
+        )
+    sections = parse_sections(
+        frontmatter.body,
+        header_bytes=frontmatter.header_bytes,
+        ingested=ingested,
+    )
     validate_answer_targets(frontmatter.metadata, sections)
     references = collect_references(frontmatter.metadata, sections)
-    validate_reference_targets(workspace, references)
+    validate_reference_targets(workspace, references, resolve=not external_origin)
     return PreparedDocument(
         path=path,
         relative_path=workspace_relative(path, workspace),
@@ -61,6 +196,7 @@ def prepare_document(path: Path, workspace: Path) -> PreparedDocument:
         frontmatter=frontmatter,
         sections=tuple(sections),
         references=tuple(references),
+        external_origin=external_origin,
     )
 
 
@@ -143,11 +279,24 @@ def _load_existing_receipt(database: KnowledgeDatabase, event_id: str) -> dict[s
 def _verify_scope_ownership(connection, workspace: Path, metadata: dict[str, Any]) -> None:
     config = read_json(workspace / ".kairos" / "config.json")
     expected_workspace = config.get("workspace_id") if isinstance(config, dict) else None
-    if not expected_workspace or metadata.get("workspace") != expected_workspace:
-        raise PromotionError(
-            f"artifact workspace {metadata.get('workspace')!r} does not match configured workspace "
-            f"{expected_workspace!r}"
-        )
+    if not expected_workspace:
+        raise PromotionError("workspace configuration declares no workspace_id")
+    declared_workspace = metadata.get("workspace")
+    if declared_workspace != expected_workspace:
+        imported = {
+            value
+            for value in (config.get("imported_workspace_ids") or [])
+            if isinstance(value, str)
+        }
+        if declared_workspace not in imported:
+            raise PromotionError(
+                f"artifact workspace {declared_workspace!r} is neither the configured workspace "
+                f"{expected_workspace!r} nor a declared imported workspace"
+            )
+        # An imported document carries the goal, milestone and task of its origin workspace.
+        # Those identifiers are recorded as declared and are not resolved here, for the same
+        # reason an external reference is a leaf: this workspace does not own that namespace.
+        return
 
     goal_id = metadata.get("goal")
     milestone_id = metadata.get("milestone")
@@ -396,6 +545,7 @@ def promote_document(
                         ref.source,
                     ),
                 )
+            graph_counts = project_graph_layer(connection, metadata["id"], metadata)
             coverage_state = "evidenced" if metadata["type"] == "report" and metadata["state"] == "success" else "referenced"
             coverage_section = metadata["answers"][0]["target"]
             connection.execute(
@@ -464,6 +614,8 @@ def promote_document(
                 "relation_count": int(relation_count),
                 "query_handle_count": int(query_count),
                 "search_contracts": contract_results,
+                "graph_counts": graph_counts,
+                "external_origin": document.external_origin,
                 "verified": True,
                 "created_at": now,
             }

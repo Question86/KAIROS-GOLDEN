@@ -34,6 +34,43 @@ Search checks governed document and goal-source reconciliation first. If a valid
 
 `--no-refresh` is a diagnostic escape hatch. Its result is potentially stale and cannot support a freshness or completion claim.
 
+## Ingested documents and the graph layer
+
+A document authored in another workspace is transferred unchanged. Its origin must be
+declared in `.kairos/config.json` under `imported_workspace_ids`; an undeclared origin is
+refused. A declared origin keeps its own goal, milestone and task identifiers, which are
+recorded rather than resolved, and its pointers are stored as external leaves.
+
+Where such a document declares `relations`, `contracts`, `artifacts` or `drift_records` in
+its header, promotion projects them into their own tables. Read them back with:
+
+```powershell
+python -m kairos graph --workspace ..\kairos_workspace --artifact CODE_EXAMPLE_L0001_V01
+python -m kairos graph --workspace ..\kairos_workspace --asset "reports/example_result.json"
+python -m kairos graph --workspace ..\kairos_workspace --node "src/example_module.cpp"
+python -m kairos graph --workspace ..\kairos_workspace --census
+python -m kairos graph --workspace ..\kairos_workspace --vocabulary
+python -m kairos graph --workspace ..\kairos_workspace --integrity
+```
+
+`--vocabulary` names stored values outside their declared set, `--integrity` names rows
+whose evidence anchor resolves to no section. Both are findings, not rejections: a single
+deviating row never costs a document that may not be edited. The full contract is in
+`INGESTED_DOCUMENT_SPEC.md`.
+
+## Withdrawing an action permit
+
+An action permit is retired automatically once its edit has landed and reconciled. A permit
+that will never see that edit — issued by mistake, or for bytes already in place — is
+withdrawn explicitly, otherwise it holds every later freshness check closed until its TTL
+expires:
+
+```powershell
+python -m kairos revoke-permit --workspace ..\kairos_workspace --permit GAP_... --reason "The planned edit will not be made."
+```
+
+Only an `ACTIVE` permit can be withdrawn, and never one that backs a running action.
+
 ## Material heartbeat
 
 ```powershell
