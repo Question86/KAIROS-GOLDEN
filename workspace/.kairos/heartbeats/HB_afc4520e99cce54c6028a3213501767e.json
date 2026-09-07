@@ -1,0 +1,53 @@
+{
+  "changed_candidates": [
+    "ACTIVE.md",
+    "CLOSED.md",
+    "NEURAL_CORTEX.md",
+    "_LOOP_GATE.md",
+    "_SESSION.md",
+    "reports/report_TASK_0001_L001_V02.md"
+  ],
+  "changed_goal_sources": [],
+  "created_at": "2026-09-07T19:29:36Z",
+  "failed_count": 0,
+  "failures": [],
+  "governance_attribution": {
+    "attributed_paths": [
+      "reports/report_TASK_0001_L001_V02.md"
+    ],
+    "checked": true,
+    "external_action": null,
+    "external_actions": [],
+    "mode": "required",
+    "quarantined": [],
+    "resolved_quarantine": [],
+    "running_action_id": "GAR_aadaeccd19f949bb96907044137e396b"
+  },
+  "heartbeat_id": "HB_afc4520e99cce54c6028a3213501767e",
+  "lifecycle_after": "ACTIVE",
+  "lifecycle_before": "READY",
+  "missing_sources": [],
+  "mode": "verify",
+  "mode_rationale": "explicitly requested",
+  "pending_count": 0,
+  "promoted": [
+    "REPORT_TASK_0001_L001_V02",
+    "KAIROS_NEURAL_CORTEX",
+    "KAIROS_ACTIVE",
+    "KAIROS_CLOSED",
+    "KAIROS_LOOP_GATE",
+    "KAIROS_SESSION"
+  ],
+  "promotion_receipts": [
+    "PR_97eae80cca6c1c2aa3542206cace7a47",
+    "PR_f33f49de95db4859e417bdbdc046d757",
+    "PR_13b36be1b9622fc43e02fb0610a71663",
+    "PR_72f0ccd06682bec38ad7febacd589e2f",
+    "PR_a89854fb6d1c590568a509422d440e9a",
+    "PR_cf3307790e9b700a27a39ebf237713f1"
+  ],
+  "schema": "kairos-heartbeat-receipt/v1",
+  "sequence": 1,
+  "trigger": "explicit",
+  "verified": true
+}

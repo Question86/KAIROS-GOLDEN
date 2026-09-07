@@ -1,0 +1,11 @@
+{
+  "goals": {
+    "goals/GOAL_KAIROS_001.json": {
+      "mtime_ns": 1788803525226165100,
+      "size": 2156
+    }
+  },
+  "missing_sources": [],
+  "schema": "kairos-goal-reconciliation-manifest/v1",
+  "updated_at": "2026-09-07T17:52:05Z"
+}

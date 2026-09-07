@@ -1,34 +1,40 @@
-# KAIROS Golden Starter
+# KAIROS Framework
 
-KAIROS is a small, governed infrastructure for starting either a manual or an autonomous
-project without carrying project history into the next one. The repository contains a
-sealed source-only starter, a Loop 1 archive, and no developer task history.
+This directory is the project-agnostic KAIROS framework. It contains reusable context
+governance, a deterministic harness, a derived SQLite projection, loop procedures, and a
+fail-closed Runtime/blueprint Workshop. It contains no project source tree, customer data,
+project reports, transaction history, seals, or pre-existing project database.
 
-## Start a project
+## Layout
 
-From the cloned repository:
+| Path | Role |
+|---|---|
+| `kairos/kairos_harness/` | Python harness, schemas, retrieval, graph, governance, and document templates |
+| `workspace/` | Fresh generic KAIROS workspace created by the harness initializer |
+| `workshop/` | Runtime/blueprint synchronization engine; unbound until a project config is supplied |
+| `kickstart/` | Compiler-backed project initiation: exact source/header blueprints, source index, and Workshop binding |
+| `templates/` | Project-neutral configuration templates |
+| `docs/` | Canonical architecture and operating procedures |
+
+## First use
 
 ```powershell
-cd kairos_harness
-python -m kairos starter-check --workspace ../kairos_workspace
-python -m kairos goal-prompt --workspace ../kairos_workspace --idea "Describe the project idea here"
+cd kairos/kairos_harness
+python -m kairos status --workspace ..\..\workspace
+python -m kairos validate --workspace ..\..\workspace --all
+python -m kairos health --workspace ..\..\workspace
 ```
 
-The second command prints one English `/goal` prompt. Copy it unchanged into Codex or
-Claude Code. The LLM first formulates an explicit kickoff contract, then runs the
-governed `project-kickoff` command. That one command verifies and materializes the
-starter, creates the first goal and task, and atomically opens Loop 2.
+The workspace database and dynamic routers are derived from authoritative documents by a
+heartbeat. They are not edited directly. The Workshop is intentionally unconfigured here;
+bind a real project in a separate KAIROS workspace with the compiler-backed kickstart:
 
-After kickoff, KAIROS requires task-first work, metadata-first research, documented
-evidence, and verified finalization. The bootstrap prompt supports either a Human-led or
-autonomous workflow; it does not bypass those safeguards.
+```powershell
+python -m kickstart init --project-root <project> --workspace <fresh-workspace> --compile-commands <build>/compile_commands.json
+```
 
-The golden seal is immutable. Ongoing project work belongs in a repository created from
-this template, never in the template repository itself.
+For CMake projects, replace `--compile-commands` with `--cmake <project>/CMakeLists.txt`.
+The procedure and refusal boundary are documented in `docs/PROJECT_KICKSTART.md`.
 
-## License
-
-Copyright (c) 2026 Yannick Wende. KAIROS is distributed under the KAIROS Personal and
-Private Use License v1.0. It permits personal, private, non-commercial use and local
-modification; it does not permit redistribution, public hosting, sublicensing, or
-commercial use. Read [LICENSE](LICENSE) before use.
+Before any publication or remote write, freeze an exact file list and its exclusions and
+obtain explicit approval. This local materialization performs no Git or GitHub operation.

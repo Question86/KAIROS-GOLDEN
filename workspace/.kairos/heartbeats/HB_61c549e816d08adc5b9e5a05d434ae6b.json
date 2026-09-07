@@ -1,0 +1,38 @@
+{
+  "changed_candidates": [
+    "reports/report_TASK_0001_L001_V07.md"
+  ],
+  "changed_goal_sources": [],
+  "created_at": "2026-09-07T19:51:54Z",
+  "failed_count": 0,
+  "failures": [],
+  "governance_attribution": {
+    "attributed_paths": [
+      "reports/report_TASK_0001_L001_V07.md"
+    ],
+    "checked": true,
+    "external_action": null,
+    "external_actions": [],
+    "mode": "required",
+    "quarantined": [],
+    "resolved_quarantine": [],
+    "running_action_id": "GAR_d65ce479c6f849e79163120f379b12b1"
+  },
+  "heartbeat_id": "HB_61c549e816d08adc5b9e5a05d434ae6b",
+  "lifecycle_after": "ACTIVE",
+  "lifecycle_before": "ACTIVE",
+  "missing_sources": [],
+  "mode": "verify",
+  "mode_rationale": "explicitly requested",
+  "pending_count": 0,
+  "promoted": [
+    "REPORT_TASK_0001_L001_V07"
+  ],
+  "promotion_receipts": [
+    "PR_96b76a5b5170a2f19acea6c3ca37eedb"
+  ],
+  "schema": "kairos-heartbeat-receipt/v1",
+  "sequence": 7,
+  "trigger": "explicit",
+  "verified": true
+}

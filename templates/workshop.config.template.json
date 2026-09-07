@@ -1,0 +1,29 @@
+{
+  "schema": "runtime-sync-workshop-config/v1",
+  "codebase_root": "<absolute project root>",
+  "runtime_root": "<absolute governed source root>",
+  "cmake_file": "<absolute build authority file>",
+  "cmake_source_sets": [],
+  "cmake_extra_sources": [],
+  "dataflow_index": "<absolute source-membership index>",
+  "blueprint_root": "<absolute external blueprint root>",
+  "managed_blueprint_root": "<absolute managed blueprint root>",
+  "kairos_workspace": "<absolute KAIROS workspace>",
+  "kairos_harness": "<absolute path to kairos/kairos_harness>",
+  "kairos_database": "<absolute path to KAIROS .kairos/kairos.db>",
+  "include_roots": [
+    "<absolute project include root>"
+  ],
+  "expected_translation_units": 0,
+  "blueprint_ignore": [],
+  "auxiliary_documents": [],
+  "machine_authority_files": ["workshop.config.json"],
+  "header_extensions": [".h", ".hh", ".hpp", ".hxx", ".cuh", ".inl"],
+  "additional_header_owners": {},
+  "header_only_blueprints": {},
+  "dependent_tests": {},
+  "dependent_test_root": "tests",
+  "dependent_test_suffixes": [".c", ".cc", ".cpp", ".cxx", ".cu"],
+  "state_directory": ".state",
+  "transaction_directory": "transactions"
+}

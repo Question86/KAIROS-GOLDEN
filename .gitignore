@@ -1,22 +1,20 @@
-# Python and test products
 **/__pycache__/
 *.py[cod]
 .pytest_cache/
-/kairos_harness/tests/_tmp/
-
-# Reconstructed runtime and local recovery packages
-*.db
-*.db-wal
-*.db-shm
-/kairos_workspace/.kairos/*
-!/kairos_workspace/.kairos/config.json
-!/kairos_workspace/.kairos/golden_seal.json
-/kairos_workspace/backups/
-
-# Regenerable workspace projections
-/kairos_workspace/ACTIVE.md
-/kairos_workspace/CLOSED.md
-/kairos_workspace/NEURAL_CORTEX.md
-/kairos_workspace/_LOOP_GATE.md
-/kairos_workspace/_SESSION.md
-/kairos_workspace/current.json
+kairos/kairos_harness/tests/_tmp/
+workspace/.kairos/*.db
+workspace/.kairos/*.db-wal
+workspace/.kairos/*.db-shm
+workspace/.kairos/runtime_state.json
+workspace/.kairos/events/
+workspace/.kairos/receipts/
+workspace/.kairos/locks/
+workspace/ACTIVE.md
+workspace/CLOSED.md
+workspace/NEURAL_CORTEX.md
+workspace/_LOOP_GATE.md
+workspace/_SESSION.md
+workspace/current.json
+workspace/backups/
+workshop/.state/
+workshop/transactions/
