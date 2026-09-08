@@ -1,4 +1,5 @@
 # final corrected alpha.2 publication gate
+# reconstruction hash repaired after cold local verification
 name: Publish KAIROS alpha.2 v2
 
 on:
