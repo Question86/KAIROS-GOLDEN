@@ -1,0 +1,106 @@
+name: Publish KAIROS alpha
+
+on:
+  push:
+    branches:
+      - release-candidate
+    paths:
+      - .github/workflows/publish-alpha.yml
+      - release/publish-docs.patch
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out release-candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify publication base
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=0098d00a73a2a48d504979222c67e915eaa652c0
+          MAIN="$(git ls-remote origin refs/heads/main | cut -f1)"
+          test "$MAIN" = "$BASE"
+          test -z "$(git ls-remote --tags origin refs/tags/v0.1.0-alpha.1)"
+
+      - name: Reconstruct frozen RC
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -B release/rebuild_rc.py
+          test "$(sha256sum release/kairos-rc.git.patch | cut -d' ' -f1)" = "f0d4216ab6dacda8e564d4e6add481dfa2907aff2ce2dbab1d26b77623cfff95"
+
+      - name: Materialize clean publication tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=0098d00a73a2a48d504979222c67e915eaa652c0
+          rm -rf /tmp/kairos-publish
+          git worktree add --detach /tmp/kairos-publish "$BASE"
+          cd /tmp/kairos-publish
+          git apply "$GITHUB_WORKSPACE/release/kairos-rc.git.patch"
+          git apply "$GITHUB_WORKSPACE/release/publish-docs.patch"
+          rm -f KAIROS_FRAMEWORK_CANONICAL_20260907.zip
+          find . -type d -name '__pycache__' -prune -exec rm -rf {} +
+          rm -rf kairos/kairos_harness/tests/_tmp
+          find . -type f \( -name '*.pyc' -o -name '*.db' -o -name '*.db-wal' -o -name '*.db-shm' \) -delete
+          test "$(find . -type f ! -name .git | wc -l)" -eq 134
+          git diff --check
+
+      - name: Run release regression suites
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/kairos-publish/kairos/kairos_harness
+          python -B -m unittest discover -s tests -v
+          cd /tmp/kairos-publish
+          python -B -c "import sys,unittest; sys.path.insert(0,'.'); s=unittest.defaultTestLoader.discover('kickstart/tests'); r=unittest.TextTestRunner(verbosity=2).run(s); raise SystemExit(0 if r.wasSuccessful() else 1)"
+          cd /tmp/kairos-publish/workshop
+          python -B -m unittest discover -s tests -v
+          python -m compileall -q /tmp/kairos-publish/kairos/kairos_harness/kairos /tmp/kairos-publish/kickstart /tmp/kairos-publish/workshop/src/runtime_sync_workshop
+          find /tmp/kairos-publish -type d -name '__pycache__' -prune -exec rm -rf {} +
+          rm -rf /tmp/kairos-publish/kairos/kairos_harness/tests/_tmp
+          find /tmp/kairos-publish -type f \( -name '*.pyc' -o -name '*.db' -o -name '*.db-wal' -o -name '*.db-shm' \) -delete
+          cd /tmp/kairos-publish
+          test "$(find . -type f ! -name .git | wc -l)" -eq 134
+          git diff --check
+
+      - name: Commit and publish alpha
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/kairos-publish
+          git config user.name "Q86 Release Bot"
+          git config user.email "113774086+Question86@users.noreply.github.com"
+          git add -A
+          git commit -m "release: KAIROS 0.1.0-alpha.1"
+          git tag -a v0.1.0-alpha.1 -m "KAIROS 0.1.0-alpha.1"
+          git push origin HEAD:main
+          git push origin refs/tags/v0.1.0-alpha.1
+
+      - name: Create GitHub prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd /tmp/kairos-publish
+          git archive --format=zip --prefix=KAIROS-0.1.0-alpha.1/ -o /tmp/KAIROS-0.1.0-alpha.1.zip HEAD
+          cd /tmp
+          sha256sum KAIROS-0.1.0-alpha.1.zip > KAIROS-0.1.0-alpha.1.zip.sha256
+          cd /tmp/kairos-publish
+          gh release create v0.1.0-alpha.1 \
+            /tmp/KAIROS-0.1.0-alpha.1.zip \
+            /tmp/KAIROS-0.1.0-alpha.1.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "KAIROS 0.1.0-alpha.1" \
+            --notes-file docs/RELEASE_NOTES_0.1.0_ALPHA.md \
+            --prerelease \
+            --verify-tag
