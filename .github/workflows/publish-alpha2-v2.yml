@@ -1,13 +1,10 @@
-# final corrected alpha.2 publication gate
-# reconstruction hash repaired after cold local verification
+# alpha.2 publication gate: reconstruct audited delta, add staged new files, test cold, publish
 name: Publish KAIROS alpha.2 v2
 
 on:
   push:
-    branches:
-      - release-candidate-alpha2
-    paths:
-      - .github/workflows/publish-alpha2-v2.yml
+    branches: [release-candidate-alpha2]
+    paths: [.github/workflows/publish-alpha2-v2.yml]
 
 permissions:
   contents: write
@@ -32,16 +29,15 @@ jobs:
         run: |
           set -euo pipefail
           BASE=7a67a38a7bd1de5a68307f51644aed0b5ed86196
-          MAIN="$(git ls-remote origin refs/heads/main | cut -f1)"
-          test "$MAIN" = "$BASE"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$BASE"
           test -z "$(git ls-remote --tags origin refs/tags/v0.1.0-alpha.2)"
 
-      - name: Reconstruct complete alpha.2 source patch
+      - name: Reconstruct audited alpha.2 delta
         shell: bash
         run: |
           set -euo pipefail
-          python -B release-alpha2/rebuild_complete.py
-          test "$(sha256sum release-alpha2/KAIROS-alpha2-source-complete.patch | cut -d' ' -f1)" = "f2454f25435e068d92469545142c93a781efb041064516e28b489a9a41f59e4d"
+          python -B release-alpha2/rebuild.py
+          test "$(sha256sum release-alpha2/KAIROS-alpha2-source.patch | cut -d' ' -f1)" = "8d97f550be38ddf4837b09fd969de2d99aa3886a3088bb6ad59b7304c900bc2f"
 
       - name: Materialize clean publication tree and framework index
         shell: bash
@@ -51,17 +47,18 @@ jobs:
           rm -rf /tmp/kairos-publish
           git worktree add --detach /tmp/kairos-publish "$BASE"
           cd /tmp/kairos-publish
-          git apply "$GITHUB_WORKSPACE/release-alpha2/KAIROS-alpha2-source-complete.patch"
+          git apply "$GITHUB_WORKSPACE/release-alpha2/KAIROS-alpha2-source.patch"
+          cp -R "$GITHUB_WORKSPACE/release-alpha2/extra/." .
           export PYTHONPATH="$PWD/kairos/kairos_harness:$PWD/workshop/src:$PWD"
           python -B scripts/build_framework_index.py --verify-determinism
           python - <<'PY'
           import json
           from pathlib import Path
-          manifest=json.loads(Path('kairos/kairos_harness/kairos/framework_manifest.json').read_text())
-          assert manifest['schema']=='kairos-framework-index/v1'
-          assert manifest['document_count']==23
-          assert manifest['version']=='0.1.0-alpha.2'
-          print('framework_db_sha256='+manifest['database_sha256'])
+          m=json.loads(Path('kairos/kairos_harness/kairos/framework_manifest.json').read_text())
+          assert m['schema']=='kairos-framework-index/v1'
+          assert m['document_count']==23
+          assert m['version']=='0.1.0-alpha.2'
+          print('framework_db_sha256='+m['database_sha256'])
           PY
           test "$(find . -type f ! -path './.git/*' | wc -l)" -eq 143
           git diff --check
@@ -75,7 +72,6 @@ jobs:
           cd "$ROOT/kairos/kairos_harness"
           test "$(grep -R --include='test_*.py' -h '^    def test_' tests | wc -l)" -eq 145
           for f in tests/test_*.py; do
-            echo "=== $(basename "$f") ==="
             python -B -m unittest discover -s tests -p "$(basename "$f")" -v
           done
           cd "$ROOT"
@@ -103,12 +99,12 @@ jobs:
           import json
           checks=[('/tmp/q1.json','KAIROS_FRAMEWORK_BOOTSTRAP','s-before-project-intake'),('/tmp/q2.json','KAIROS_ARCHITECTURE','s-overview'),('/tmp/q3.json','KAIROS_WORKSHOP','s-authority-migration')]
           for path,aid,sid in checks:
-              data=json.load(open(path))
-              assert data['corpus']=='framework'
-              assert data['framework']['verified'] is True
-              assert data['framework']['source_documents_verified']==23
-              assert data['primary']['artifact_id']==aid
-              assert data['primary']['section_id']==sid
+              d=json.load(open(path))
+              assert d['corpus']=='framework'
+              assert d['framework']['verified'] is True
+              assert d['framework']['source_documents_verified']==23
+              assert d['primary']['artifact_id']==aid
+              assert d['primary']['section_id']==sid
           PY
           test "$(find "$ROOT" -type f -name 'kairos.db' | wc -l)" -eq 0
           test "$(find "$ROOT" -type f -name '*.db' | wc -l)" -eq 1
@@ -137,9 +133,8 @@ jobs:
           python -B -m kickstart init --project-root /tmp/kairos-real --workspace /tmp/kairos-workspace --spec-file /tmp/project-spec.json --cmake /tmp/kairos-real/CMakeLists.txt > /tmp/intake.json
           python - <<'PY'
           import json
-          data=json.load(open('/tmp/intake.json'))
-          assert data['verified'] is True
-          assert data['translation_units']==1
+          d=json.load(open('/tmp/intake.json'))
+          assert d['verified'] is True and d['translation_units']==1
           PY
           CONFIG=/tmp/kairos-workspace/.kairos/workshop.config.json
           python -B -m runtime_sync_workshop --config "$CONFIG" status > /tmp/status0.json
@@ -152,17 +147,14 @@ jobs:
           python -B -m runtime_sync_workshop --config "$CONFIG" status > /tmp/final-status.json
           python - <<'PY'
           import json
-          before=json.load(open('/tmp/status0.json'))
-          seal=json.load(open('/tmp/seal0.json'))
-          framework=json.load(open('/tmp/framework-after.json'))
-          project=json.load(open('/tmp/project-search.json'))
+          before=json.load(open('/tmp/status0.json')); seal=json.load(open('/tmp/seal0.json'))
+          fw=json.load(open('/tmp/framework-after.json')); project=json.load(open('/tmp/project-search.json'))
           final=json.load(open('/tmp/final-status.json'))
           assert before['verified'] is True and before['counts']['issues']==0
           assert seal['counts']['issues']==0 and seal['package_sha256']==before['package_sha256']
-          assert framework['corpus']=='framework' and framework['framework']['verified'] is True
+          assert fw['corpus']=='framework' and fw['framework']['verified'] is True
           assert project['primary']['artifact_id'] in {'PROJECT_SOURCE_INDEX','PROJECT_CODE_HELLO_CPP'}
-          assert final['verified'] is True and final['counts']['issues']==0
-          assert final['seal']['matches_current'] is True
+          assert final['verified'] is True and final['counts']['issues']==0 and final['seal']['matches_current'] is True
           PY
 
       - name: Commit and publish alpha.2
@@ -202,5 +194,4 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --title "KAIROS 0.1.0-alpha.2" \
             --notes-file docs/RELEASE_NOTES_0.1.0_ALPHA2.md \
-            --prerelease \
-            --verify-tag
+            --prerelease --verify-tag
