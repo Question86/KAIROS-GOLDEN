@@ -1,0 +1,214 @@
+diff --git a/README.md b/README.md
+index 99a8d10..d5830a7 100644
+--- a/README.md
++++ b/README.md
+@@ -1,5 +1,10 @@
+ # KAIROS Framework
+ 
++**Release: 0.1.0-alpha.1 — developer preview.** The cold distribution has been validated
++end-to-end on an external C++/CMake repository. This is not a stable/1.0 or production-support
++claim. Read `docs/KNOWN_LIMITATIONS.md` before adopting it.
++
++
+ This directory is the project-agnostic KAIROS framework. It contains reusable context
+ governance, a deterministic harness, a derived SQLite projection, loop procedures, a
+ compiler-backed project intake edge, and a fail-closed code/document Workshop. It contains
+@@ -47,8 +52,9 @@ The bundled `workspace/` is not the first-run target for a customer project. It
+ omits runtime state and a project database from publication. Use the test commands in
+ `docs/EXTERNAL_AUDIT_SCOPE.md` to verify the package itself.
+ 
+-See `docs/PROJECT_KICKSTART.md` for ground-truth and refusal boundaries and
+-`docs/WORKSHOP.md` for the synchronized change lifecycle. Changes to the governed local-header
++See `docs/PROJECT_KICKSTART.md` for ground-truth and refusal boundaries,
++`docs/WORKSHOP.md` for the synchronized change lifecycle, `docs/KNOWN_LIMITATIONS.md` for the
++current support boundary, and `docs/RELEASE_NOTES_0.1.0_ALPHA.md` for the cold-release evidence. Changes to the governed local-header
+ set use the Workshop's explicit authority-migration commands against an isolated candidate tree.
+ Translation-unit membership or compiler-context changes fail closed until a project-specific
+ build-authority migration can reproduce the real build configuration; the framework never edits
+diff --git a/docs/EXTERNAL_AUDIT_SCOPE.md b/docs/EXTERNAL_AUDIT_SCOPE.md
+index a438c83..ea8af1e 100644
+--- a/docs/EXTERNAL_AUDIT_SCOPE.md
++++ b/docs/EXTERNAL_AUDIT_SCOPE.md
+@@ -1,4 +1,4 @@
+-# External audit scope (pre-publication)
++# External audit and release-validation scope
+ 
+ Review the framework from an isolated copy. Do not create audit tasks, reports, databases or
+ transactions inside the canonical publication tree merely to audit it.
+@@ -76,4 +76,5 @@ py -B -m kickstart init --project-root <project> --workspace <fresh-workspace> -
+ 
+ Acceptance is fail-closed. Compiler membership, exact source/header ledgers, include
+ selection/ownership, external/managed byte parity, KAIROS database projection and Workshop
+-postcheck must agree. A passing local audit is evidence for review, not publication authority.
++postcheck must agree. Publication additionally requires the cold-distribution exercise recorded
++in `docs/RELEASE_NOTES_0.1.0_ALPHA.md` and an explicit repository-owner release decision.
+diff --git a/docs/KNOWN_LIMITATIONS.md b/docs/KNOWN_LIMITATIONS.md
+new file mode 100644
+index 0000000..d9c0fd9
+--- /dev/null
++++ b/docs/KNOWN_LIMITATIONS.md
+@@ -0,0 +1,70 @@
++# Known limitations — 0.1.0-alpha.1
++
++KAIROS 0.1.0-alpha.1 is a developer preview. The verified core is intended for technically
++experienced users who are comfortable with compiler databases, command-line tooling, and
++fail-closed workflows. This release is not a stable compatibility or production-support
++promise.
++
++## Project intake scope
++
++- The project-binding edge currently targets C, C++ and CUDA translation units represented
++  by compiler-produced `compile_commands.json`, or CMake projects that can emit that database.
++- Source/header intake requires UTF-8 regular files with representable project-relative paths.
++  Symlink/reparse components are refused where an exact byte identity cannot be guaranteed.
++- Translation-unit membership comes from compiler evidence. KAIROS does not infer membership
++  from binary names, object-file stems, or arbitrary build-file text.
++- The local header closure is deliberately conservative. Literal quoted/angle includes are
++  resolved with retained compiler context; preprocessor-computed includes such as
++  `#include SOME_MACRO` are not guessed and may fail closed.
++- This release does not claim to reimplement the complete C/C++ preprocessor. When retained
++  compiler evidence cannot establish a safe include decision, refusal is preferred over a
++  plausible but unverified project fact.
++
++## Structural migration scope
++
++- Ordinary source/header edits and include-owner changes use the normal Workshop transaction.
++- Adding/removing governed local headers can use the explicit authority-migration transaction
++  while translation-unit membership and normalized compiler context stay unchanged.
++- Translation-unit additions/removals/renames or compiler-context changes require refreshed
++  real build authority. The generic migration path intentionally refuses to edit CMake, Meson,
++  Bazel, Make, IDE project files, or equivalent build sources by inference.
++- Removed header documents are retained as superseded KAIROS history rather than silently
++  deleted from the knowledge layer.
++
++## Verification boundary
++
++- KAIROS verifies synchronization among admitted source/header bytes, Markdown authority,
++  derived SQLite projections, Workshop transaction state and content hashes.
++- A successful Workshop postcheck does not by itself prove that the application builds, runs,
++  passes domain tests, or is scientifically correct. Those claims require project-specific
++  build/test/parity adapters or separately retained external evidence.
++- The Workshop uses a global exclusive lease for governed mutations. This alpha is deliberately
++  serialized rather than a concurrent multi-writer system.
++- Logical Workshop guards do not automatically install operating-system ACLs. External editors
++  can still bypass application-level rules unless the operator applies an appropriate filesystem
++  boundary. See `workshop/SECURITY_BOUNDARY.md` and `acl-plan`.
++
++## Product and model integration scope
++
++- `kickstart prompt` renders the bounded prompt for an LLM to create the initial
++  `kairos-project-kickoff/v1` contract. This release does not call or bundle an LLM provider.
++  The returned contract must be reviewed before compiler discovery.
++- The bundled `workspace/` is a framework self-model/source snapshot, not a customer project
++  starter. Real project work uses a fresh external workspace.
++- There is no GUI or one-click installer in this alpha. The supported interface is the Python
++  command line plus the project compiler/CMake toolchain.
++- The reusable KAIROS harness is broader than the current project-intake adapter, but this
++  release should not be advertised as language-agnostic onboarding for arbitrary repositories.
++
++## Release and license scope
++
++- This is an alpha/developer-preview release, not `1.0`, stable, enterprise-ready, or a safety-
++  critical compliance claim.
++- The current `LICENSE` grants personal, private, non-commercial use only. The repository is
++  source-available under that license; it is not an OSI open-source license and does not grant
++  commercial, professional, organizational, redistribution, or hosting rights without written
++  permission from the copyright holder.
++- The cold release validation for this version was executed in an isolated Linux environment.
++  Project-specific compilers, CMake generators, filesystem semantics and operating-system
++  permissions can expose additional portability issues and should be validated before relying on
++  KAIROS for a new environment.
+diff --git a/docs/PROJECT_KICKSTART.md b/docs/PROJECT_KICKSTART.md
+index 4acd256..20c5ef5 100644
+--- a/docs/PROJECT_KICKSTART.md
++++ b/docs/PROJECT_KICKSTART.md
+@@ -96,9 +96,9 @@ references were omitted from the shadow.
+ 
+ Owner-only include-topology changes among an unchanged governed header set are updated in
+ `PROJECT_SOURCE_INDEX.md` inside the same Workshop transaction and promoted with the code
+-document. A change that adds or removes a governed header is a stronger authority migration
+-and currently fails before apply with `AUTHORITY_TOPOLOGY_MIGRATION_REQUIRED`; it must not
+-be hidden by leaving stale ownership or silently growing/shrinking the mapped corpus.
++document. A change that adds or removes a governed local header is a stronger authority migration
++and must use the explicit `authority-*` transaction described below; the normal transaction does
++not silently grow or shrink the mapped corpus.
+ 
+ Initiation and Workshop verification establish source/document/database synchronization.
+ They do not by themselves prove a successful application build, runtime result, scientific
+diff --git a/docs/RELEASE_NOTES_0.1.0_ALPHA.md b/docs/RELEASE_NOTES_0.1.0_ALPHA.md
+new file mode 100644
+index 0000000..0ab661b
+--- /dev/null
++++ b/docs/RELEASE_NOTES_0.1.0_ALPHA.md
+@@ -0,0 +1,71 @@
++# KAIROS 0.1.0-alpha.1 — developer preview
++
++This release is the first public developer-preview candidate validated from a cold distribution
++rather than from the development workspace that produced it.
++
++## Frozen input
++
++- Pre-release RC archive SHA-256: `799c4f31c073582b082c8571f6398bf3c6db3fb8fa6b2ed42278e36311ca0e84`
++- Pre-release RC archive size: 415382 bytes
++- Files in frozen RC: 132
++
++## Cold reproducibility validation
++
++The frozen RC was unpacked into a fresh directory with no inherited KAIROS runtime state. The
++external project fixture was reconstructed from the public GitHub repository
++`UCL/CMakeHelloWorld` at commit `12999fb575a6f5b6edda1121f5e9c5069313fad1`.
++
++The validation sequence was:
++
++1. generate/review a project-intent contract;
++2. compiler-backed CMake intake into a fresh external KAIROS workspace;
++3. require intake, corpus and full health verification;
++4. seal the initial corpus;
++5. perform a normal source transaction through `prepare -> verify -> apply`;
++6. rebuild/run the external project;
++7. stage an isolated candidate that adds one governed local header and changes the source;
++8. complete `authority-checkout -> authority-prepare -> authority-verify -> authority-apply`;
++9. start fresh Python processes with no retained in-memory Workshop/KAIROS objects;
++10. verify status, seal match, full health and question-oriented retrieval from persisted state;
++11. perform another post-restart Workshop transaction;
++12. rebuild/run the project and require final corpus verification.
++
++Observed final state:
++
++- project intake: `verified=true`;
++- initial and final Workshop status: verified;
++- normal source apply: `POSTCHECK_VERIFIED`, `bit_exact=true`;
++- authority migration apply: `POSTCHECK_VERIFIED`, `bit_exact=true`;
++- post-restart continuation apply: `POSTCHECK_VERIFIED`, `bit_exact=true`;
++- final corpus issues: `0`;
++- final seal: matches current package;
++- final lease: none;
++- full KAIROS health: `PASS`;
++- rebuilt external executable: successful, expected output retained.
++
++The upstream fixture's minimal CMake file emits a developer warning because it calls `project()`
++before `cmake_minimum_required()`. That warning belongs to the external fixture and did not affect
++configure/build success or KAIROS verification.
++
++## Regression suites on the frozen code
++
++- KAIROS harness: 139/139 PASS
++- Kickstart: 18/18 PASS
++- Workshop: 21/21 PASS
++- Python compilation: PASS
++
++## Major alpha capabilities
++
++- Human-intent-first project contracts before source discovery.
++- Compiler-backed translation-unit membership.
++- Per-translation-unit include context with conservative external/include handling.
++- Exact source/header ledgers and hash-bound Markdown authority.
++- Same-heartbeat SQLite projection.
++- Sealed, fail-closed Workshop transactions with isolated shadow verification.
++- Synchronized owner-only include-topology updates.
++- Explicit local-header authority migration with superseded history.
++- Cross-binding checks between project intake, Workshop configuration, compiler context,
++  Markdown and database state.
++- Refusal of generic build-authority changes that cannot be proven from the real build system.
++
++See `docs/KNOWN_LIMITATIONS.md` before using the release on a new project.
