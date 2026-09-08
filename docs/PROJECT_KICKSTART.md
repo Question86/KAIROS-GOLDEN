@@ -1,10 +1,70 @@
++++
+schema = "kairos-context/v1"
+id = "KAIROS_PROJECT_KICKSTART"
+type = "documentation"
+revision = 1
+state = "active"
+authority = "operating_contract"
+workspace = "KAIROS_FRAMEWORK"
+route = "KAIROS_FRAMEWORK/KAIROS_PROJECT_KICKSTART"
+updated_at = "2026-09-08T10:30:00Z"
+capsule = "Authoritative project-initiation procedure: Human intent first, compiler-backed membership second, then exact Markdown/database baseline and Workshop handoff."
+claim_boundary = "This framework source owns the procedure and rules it states; it does not prove live project state, project outcomes, or facts outside its declared scope."
+entities = ["KAIROS", "KAIROS_PROJECT_KICKSTART"]
+facets = ["kickstart", "intent", "compiler", "ground-truth"]
+criteria = []
+does_not_answer = ["live project state", "project-specific execution outcome"]
+
+[[answers]]
+intent = "project_kickoff"
+question = "How do I initialize an existing C++ project with KAIROS?"
+target = "s-1-project-intent-precedes-code-discovery"
+
+[[answers]]
+intent = "project_kickoff"
+question = "What establishes project intent before KAIROS inspects code?"
+target = "s-1-project-intent-precedes-code-discovery"
+
+[[answers]]
+intent = "compiler_authority"
+question = "How does KAIROS determine which translation units belong to a project?"
+target = "s-2-compiler-backed-implementation-binding"
+
+[[answers]]
+intent = "ground_truth"
+question = "What is the ground-truth contract during KAIROS project intake?"
+target = "s-ground-truth-contract"
+
+[[search_contract]]
+query = "How do I initialize an existing C++ project with KAIROS?"
+expected = "KAIROS_PROJECT_KICKSTART#s-1-project-intent-precedes-code-discovery"
+required_top_k = 1
++++
 # Project kickstart and ground-truth binding
+
+## CONTEXT INDEX
+
+- [`s-overview`](#s-overview) — The canonical framework is intentionally unbound. A real project is created in two ordered
+- [`s-1-project-intent-precedes-code-discovery`](#s-1-project-intent-precedes-code-discovery) — Generate the LLM prompt from the Human project outcome:
+- [`s-2-compiler-backed-implementation-binding`](#s-2-compiler-backed-implementation-binding) — The command never edits the project source tree. It writes only the selected KAIROS
+- [`s-ground-truth-contract`](#s-ground-truth-contract) — compile_commands.json is the primary translation-unit membership authority because it is
+- [`s-materialized-evidence`](#s-materialized-evidence) — goals/<GOAL>.json and tasks/task_<TASK>.md: the reviewed Human project intent and active work scope, created before source discovery.
+- [`s-handoff-to-synchronized-development`](#s-handoff-to-synchronized-development) — A verified intake may enter the separate Workshop lifecycle:
+- [`s-continuing-after-the-first-baseline`](#s-continuing-after-the-first-baseline) — Ordinary code/header edits that keep compiler membership and the governed header set stable use
+
+<a id="s-overview"></a>
+## Overview
+
+> Capsule: The canonical framework is intentionally unbound. A real project is created in two ordered
 
 The canonical framework is intentionally unbound. A real project is created in two ordered
 steps: first establish Human project intent, then bind compiler-observed implementation
 reality under that exact goal/milestone/task scope.
 
+<a id="s-1-project-intent-precedes-code-discovery"></a>
 ## 1. Project intent precedes code discovery
+
+> Capsule: Generate the LLM prompt from the Human project outcome:
 
 Generate the LLM prompt from the Human project outcome:
 
@@ -21,7 +81,10 @@ A fresh compiler intake refuses to run without this contract. An already initial
 workspace may omit it only when its active goal/milestone/task scope already exists; if a
 contract is supplied there, its identifiers must exactly match that active authority.
 
+<a id="s-2-compiler-backed-implementation-binding"></a>
 ## 2. Compiler-backed implementation binding
+
+> Capsule: The command never edits the project source tree. It writes only the selected KAIROS
 
 ```powershell
 python -m kickstart init --project-root <project> --workspace <fresh-kairos-workspace> --spec-file project-spec.json --compile-commands <build>/compile_commands.json
@@ -32,7 +95,10 @@ The command never edits the project source tree. It writes only the selected KAI
 workspace, its derived Workshop configuration, retained compiler evidence and exact
 Markdown mirrors.
 
+<a id="s-ground-truth-contract"></a>
 ## Ground-truth contract
+
+> Capsule: compile_commands.json is the primary translation-unit membership authority because it is
 
 `compile_commands.json` is the primary translation-unit membership authority because it is
 emitted by the compiler build graph. With `--cmake`, KAIROS executes an isolated CMake
@@ -63,7 +129,10 @@ This is a conservative static local include authority, not a claim that KAIROS r
 the complete C/C++ preprocessor. The translation-unit set is compiler-produced; literal
 header closure is compiler-context-guided and deliberately bounded.
 
+<a id="s-materialized-evidence"></a>
 ## Materialized evidence
+
+> Capsule: goals/<GOAL>.json and tasks/task_<TASK>.md: the reviewed Human project intent and active work scope, created before source discovery.
 
 - `goals/<GOAL>.json` and `tasks/task_<TASK>.md`: the reviewed Human project intent and active work scope, created before source discovery.
 - `code/PROJECT_CODE_<digest>.md`: one `kairos-context/v1` document per compiler-recorded translation unit, with exact mapping facts, raw/logical hashes and verbatim `C:` ledger.
@@ -80,7 +149,10 @@ DATAFLOW membership, blueprint/managed byte parity, exact ledgers, header closur
 mapping, database projections and KAIROS health. A failure leaves evidence for diagnosis
 but does not mark the project corpus verified.
 
+<a id="s-handoff-to-synchronized-development"></a>
 ## Handoff to synchronized development
+
+> Capsule: A verified intake may enter the separate Workshop lifecycle:
 
 A verified intake may enter the separate Workshop lifecycle:
 
@@ -105,7 +177,10 @@ They do not by themselves prove a successful application build, runtime result, 
 correctness, product release or customer acceptance unless a separately configured adapter
 supplies that authority.
 
+<a id="s-continuing-after-the-first-baseline"></a>
 ## Continuing after the first baseline
+
+> Capsule: Ordinary code/header edits that keep compiler membership and the governed header set stable use
 
 Ordinary code/header edits that keep compiler membership and the governed header set stable use
 the normal Workshop transaction. Include-owner changes among already governed headers are derived

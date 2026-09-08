@@ -1,7 +1,60 @@
++++
+schema = "kairos-context/v1"
+id = "KAIROS_ARCHITECTURE"
+type = "documentation"
+revision = 1
+state = "active"
+authority = "architecture_authority"
+workspace = "KAIROS_FRAMEWORK"
+route = "KAIROS_FRAMEWORK/KAIROS_ARCHITECTURE"
+updated_at = "2026-09-08T10:30:00Z"
+capsule = "Stable architecture separating Human intent, compiler evidence, Markdown authority, derived retrieval, Workshop synchronization, and build-system boundaries."
+claim_boundary = "This framework source owns the stable architecture it states; live project state, project-specific evidence, and execution results remain owned by their project authorities."
+entities = ["KAIROS", "KAIROS_ARCHITECTURE"]
+facets = ["architecture", "compiler-authority", "workshop", "build-system"]
+criteria = []
+does_not_answer = ["live project state", "project-specific execution outcome"]
+
+[[answers]]
+intent = "architecture"
+question = "How is KAIROS architecturally organized?"
+target = "s-overview"
+
+[[answers]]
+intent = "compiler_authority"
+question = "What owns translation-unit membership in KAIROS?"
+target = "s-overview"
+
+[[answers]]
+intent = "build_authority"
+question = "Why does KAIROS refuse to rewrite project build files by inference?"
+target = "s-build-system-boundary"
+
+[[answers]]
+intent = "compiler_authority"
+question = "What owns translation-unit membership?"
+target = "s-overview"
+
+[[search_contract]]
+query = "How is KAIROS architecturally organized?"
+expected = "KAIROS_ARCHITECTURE#s-overview"
+required_top_k = 1
++++
 # KAIROS architecture
 
+## CONTEXT INDEX
+
+- [`s-overview`](#s-overview) — KAIROS separates Human intent, implementation evidence and derived retrieval while keeping
+- [`s-build-system-boundary`](#s-build-system-boundary) — Compiler databases are observed authority, not permission to rewrite a project's build language.
+
+<a id="s-overview"></a>
+## Overview
+
+> Capsule: KAIROS separates Human intent, implementation evidence and derived retrieval while keeping
+
 KAIROS separates Human intent, implementation evidence and derived retrieval while keeping
-them in one governed control plane.
+them in one governed control plane. The distribution also carries a separate immutable framework
+knowledge projection so those governing rules are searchable before a project control plane exists.
 
 1. A reviewed project goal/milestone/task contract owns intended outcomes before source discovery.
 2. Compiler records own translation-unit membership; bounded include evidence owns the admitted local header closure.
@@ -17,7 +70,10 @@ project starts in a fresh workspace created from reviewed Human intent, not from
 framework self-model. Compiler-backed intake then materializes the first synchronized code
 and document baseline.
 
+<a id="s-build-system-boundary"></a>
 ## Build-system boundary
+
+> Capsule: Compiler databases are observed authority, not permission to rewrite a project's build language.
 
 Compiler databases are observed authority, not permission to rewrite a project's build language.
 Initial intake may ask CMake to emit `compile_commands.json`. The generic post-baseline authority

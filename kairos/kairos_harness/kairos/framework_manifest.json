@@ -1,0 +1,178 @@
+{
+  "authority_note": "Framework Markdown owns claims; this database is a hash-verified read-only retrieval projection.",
+  "build_epoch": "2000-01-01T00:00:00Z",
+  "database_file": "framework.db",
+  "database_sha256": "880a3b69a82de7e11e5e0a55145374de0a6aad612052ea0550794773991286c5",
+  "derived": true,
+  "document_count": 23,
+  "documents": [
+    {
+      "artifact_id": "KAIROS_FRAMEWORK_RULES",
+      "path": "AGENTS.md",
+      "sha256": "51fcbab183233418f0bb8c5e9d7168f4ef561fd40d4933abd85603d5362a0bf3"
+    },
+    {
+      "artifact_id": "KAIROS_README",
+      "path": "README.md",
+      "sha256": "6b0fc356cedf6ecea0ac28d9cb2a1b08eeb349b3d52e0046fccaaa2ae041fdb4"
+    },
+    {
+      "artifact_id": "KAIROS_ARCHITECTURE",
+      "path": "docs/ARCHITECTURE.md",
+      "sha256": "8d4516d70fb8a054ce7e92f0a2cd9e3ba98fafba20da6a226c3fca6f7b5dacd2"
+    },
+    {
+      "artifact_id": "KAIROS_CANONICAL_DOCUMENTS",
+      "path": "docs/CANONICAL_DOCUMENTS.md",
+      "sha256": "d1d6c966278f890c70487e1d57c1d62a0c94ba9ac03ddc0e49a9b127cf44d566"
+    },
+    {
+      "artifact_id": "KAIROS_DATABASE_DYNAMICS",
+      "path": "docs/DATABASE_AND_DYNAMICS.md",
+      "sha256": "0b5f8a73d2963d705ed6e017fa0fe474ac446c430e94c1f8aa0a4a016edf6d0f"
+    },
+    {
+      "artifact_id": "KAIROS_EXTERNAL_AUDIT_SCOPE",
+      "path": "docs/EXTERNAL_AUDIT_SCOPE.md",
+      "sha256": "981a83866992055c5c9035fdc3abf1decf6025458da5bde800fab3eb5531c387"
+    },
+    {
+      "artifact_id": "KAIROS_FRAMEWORK_BOOTSTRAP",
+      "path": "docs/FRAMEWORK_BOOTSTRAP.md",
+      "sha256": "09c8ed2cba3b369f349d87b46a9ff96e6acf2c48b2a0e8090ec8f13c396e1ed3"
+    },
+    {
+      "artifact_id": "KAIROS_KNOWN_LIMITATIONS",
+      "path": "docs/KNOWN_LIMITATIONS.md",
+      "sha256": "701da9f84a95b2b9817baba0a694a8b4f619b42fa68850337f0ec83af8feb772"
+    },
+    {
+      "artifact_id": "KAIROS_LOOP_PROCEDURE",
+      "path": "docs/LOOP_PROCEDURE.md",
+      "sha256": "92860c72e887f75d17c5604eeb7b461c9f078cce27951b63a8195c3e475a6ab9"
+    },
+    {
+      "artifact_id": "KAIROS_OPERATING_MODEL",
+      "path": "docs/OPERATING_MODEL.md",
+      "sha256": "9de6f865d74cca5c05229e858fe2559131f72eacf9f8bfc1d2507feb8f5bc7e7"
+    },
+    {
+      "artifact_id": "KAIROS_PORTABILITY_SCOPE",
+      "path": "docs/PORTABILITY_SCOPE.md",
+      "sha256": "be54836a544d38b3bba3f924434f6a75c773253d371c05bc8035fb46117a03ea"
+    },
+    {
+      "artifact_id": "KAIROS_PROJECT_KICKSTART",
+      "path": "docs/PROJECT_KICKSTART.md",
+      "sha256": "28e4e9bb480485370850dabe74d55b1a7693b09feab4684ab433d86b24d06f13"
+    },
+    {
+      "artifact_id": "KAIROS_WORKSHOP",
+      "path": "docs/WORKSHOP.md",
+      "sha256": "9c35a8c0233749424b652e3c3ab4beaec8299ea839959c440a319c3955703647"
+    },
+    {
+      "artifact_id": "KAIROS_CONTEXT_HEADER_SPEC",
+      "path": "kairos/kairos_harness/docs/CONTEXT_HEADER_SPEC.md",
+      "sha256": "b420cdd2cb9b7588a16fb3cc763f79489becbfadbb00cf2a4326054c325acfb9"
+    },
+    {
+      "artifact_id": "KAIROS_INGESTED_DOCUMENT_SPEC",
+      "path": "kairos/kairos_harness/docs/INGESTED_DOCUMENT_SPEC.md",
+      "sha256": "86fc6d07e81272b11ca5675a0ab632bdeab1f0c8242991ec7f926b2e4cf098ba"
+    },
+    {
+      "artifact_id": "KAIROS_LLM_OPERATING_CONTRACT",
+      "path": "kairos/kairos_harness/docs/LLM_OPERATING_CONTRACT.md",
+      "sha256": "b86a1d7fa85836af044af67d44728dcd2153cccb57db1b6ee2ac52da4c5f62d8"
+    },
+    {
+      "artifact_id": "KAIROS_OPERATIONS",
+      "path": "kairos/kairos_harness/docs/OPERATIONS.md",
+      "sha256": "4093f16edc4e4ece3b79ea9c926ef7568f24b5885daaa5f4a9f86f92fa49f6aa"
+    },
+    {
+      "artifact_id": "KAIROS_RETRIEVAL_METHOD",
+      "path": "kairos/kairos_harness/docs/RETRIEVAL_METHOD.md",
+      "sha256": "fd9a3cc771c45aa6720f3a306a811bb1253a6550549fdad29ebc099438727250"
+    },
+    {
+      "artifact_id": "KAIROS_SEARCH_INDEX",
+      "path": "kairos/kairos_harness/docs/SEARCH_INDEX.md",
+      "sha256": "c6b6ac40f5a30f4a5928cb435f10230143654ace1675dffda0979fb82b832d1b"
+    },
+    {
+      "artifact_id": "KAIROS_SYSTEM_SYNTHESIS",
+      "path": "kairos/kairos_harness/docs/SYSTEM_SYNTHESIS.md",
+      "sha256": "1f3e8cfcb77ecce14957fbfccbff6accbcb1d7d2f3e8bd8c423231842359f121"
+    },
+    {
+      "artifact_id": "KAIROS_WORKSHOP_README",
+      "path": "workshop/README.md",
+      "sha256": "dc7b659d363f79f2e17f2921373c7c921644e4a8781f82d8a2b735b3cb4468e0"
+    },
+    {
+      "artifact_id": "KAIROS_WORKSHOP_OPERATIONS",
+      "path": "workshop/OPERATIONS.md",
+      "sha256": "71cf822873abb2ac83e84bd117000bac62f05d8cbd65ccaa1489702a0d899285"
+    },
+    {
+      "artifact_id": "KAIROS_SECURITY_BOUNDARY",
+      "path": "workshop/SECURITY_BOUNDARY.md",
+      "sha256": "9a6defc711691dbe485fb68807382eaf40876b67fcec724836ede7c5e390171e"
+    }
+  ],
+  "gold_queries": [
+    {
+      "expected": [
+        "KAIROS_FRAMEWORK_BOOTSTRAP#s-before-project-intake"
+      ],
+      "primary": "KAIROS_FRAMEWORK_BOOTSTRAP#s-before-project-intake",
+      "query": "How do I query KAIROS rules before a project workspace exists?",
+      "required_top_k": 1
+    },
+    {
+      "expected": [
+        "KAIROS_README#s-start-a-real-project"
+      ],
+      "primary": "KAIROS_README#s-start-a-real-project",
+      "query": "How do I start a real project with KAIROS?",
+      "required_top_k": 1
+    },
+    {
+      "expected": [
+        "KAIROS_ARCHITECTURE#s-overview"
+      ],
+      "primary": "KAIROS_ARCHITECTURE#s-overview",
+      "query": "What owns translation-unit membership?",
+      "required_top_k": 1
+    },
+    {
+      "expected": [
+        "KAIROS_WORKSHOP#s-authority-migration"
+      ],
+      "primary": "KAIROS_WORKSHOP#s-authority-migration",
+      "query": "When is authority migration required?",
+      "required_top_k": 1
+    },
+    {
+      "expected": [
+        "KAIROS_KNOWN_LIMITATIONS#s-verification-boundary"
+      ],
+      "primary": "KAIROS_KNOWN_LIMITATIONS#s-verification-boundary",
+      "query": "What does a successful KAIROS Workshop postcheck not prove?",
+      "required_top_k": 1
+    },
+    {
+      "expected": [
+        "KAIROS_LLM_OPERATING_CONTRACT#s-context-policy"
+      ],
+      "primary": "KAIROS_LLM_OPERATING_CONTRACT#s-context-policy",
+      "query": "How should an LLM acquire context in KAIROS?",
+      "required_top_k": 1
+    }
+  ],
+  "schema": "kairos-framework-index/v1",
+  "version": "0.1.0-alpha.2",
+  "workspace_id": "KAIROS_FRAMEWORK"
+}

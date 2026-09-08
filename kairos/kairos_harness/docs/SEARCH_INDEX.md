@@ -1,4 +1,56 @@
++++
+schema = "kairos-context/v1"
+id = "KAIROS_SEARCH_INDEX"
+type = "documentation"
+revision = 1
+state = "active"
+authority = "operating_contract"
+workspace = "KAIROS_FRAMEWORK"
+route = "KAIROS_FRAMEWORK/KAIROS_SEARCH_INDEX"
+updated_at = "2026-09-08T10:30:00Z"
+capsule = "Index of KAIROS retrieval surfaces and the question shapes appropriate for section search, graph search and bounded source inspection."
+claim_boundary = "This framework source owns the procedure and rules it states; it does not prove live project state, project outcomes, or facts outside its declared scope."
+entities = ["KAIROS", "KAIROS_SEARCH_INDEX"]
+facets = ["search", "graph", "source-search", "routing"]
+criteria = []
+does_not_answer = ["live project state", "project-specific execution outcome"]
+
+[[answers]]
+intent = "search"
+question = "How do I ask KAIROS for context?"
+target = "s-choosing-a-door"
+
+[[answers]]
+intent = "search"
+question = "How does kairos search work?"
+target = "s-kairos-search-query"
+
+[[answers]]
+intent = "source_search"
+question = "How do I reach actual source code through KAIROS?"
+target = "s-reaching-actual-source"
+
+[[search_contract]]
+query = "How do I ask KAIROS for context?"
+expected = "KAIROS_SEARCH_INDEX#s-choosing-a-door"
+required_top_k = 1
++++
 # Retrieval index — every way to ask KAIROS something
+
+## CONTEXT INDEX
+
+- [`s-overview`](#s-overview) — One table per surface: the command, what it returns, and the question it is the right
+- [`s-choosing-a-door`](#s-choosing-a-door) — Index of KAIROS retrieval surfaces and the question shapes appropriate for section search, graph search and bounded source inspection.
+- [`s-kairos-search-query`](#s-kairos-search-query) — Full-text over promoted sections, plus a graph route when the query names identities the
+- [`s-kairos-graph`](#s-kairos-graph) — Exact lookups against the four graph tables. All identity matching is exact — see
+- [`s-reaching-actual-source`](#s-reaching-actual-source) — Three steps, and the order is enforced.
+- [`s-picking-the-right-surface-for-a-counting-question`](#s-picking-the-right-surface-for-a-counting-question) — Search cannot count; it returns sections. These are the four that can:
+- [`s-related`](#s-related) — OPERATIONS.md — the surrounding session flow: entry, freshness, heartbeat, closure
+
+<a id="s-overview"></a>
+## Overview
+
+> Capsule: One table per surface: the command, what it returns, and the question it is the right
 
 One table per surface: the command, what it returns, and the question it is the right
 answer to. Written for an operator who knows what they want to know but not yet which
@@ -10,7 +62,10 @@ so a wrong door costs a ledger entry, not just time.
 `RETRIEVAL_METHOD.md` is the companion: which door to pick when several could work, with
 the measurements behind each rule. This page is the reference; that one is the decision.
 
+<a id="s-choosing-a-door"></a>
 ## Choosing a door
+
+> Capsule: Index of KAIROS retrieval surfaces and the question shapes appropriate for section search, graph search and bounded source inspection.
 
 ```
 I have a question in words                     -> search
@@ -25,7 +80,15 @@ I have a starting point and want the neighbourhood
 I need the bytes of a source file              -> search -> source-permit -> source-search
 ```
 
-## `kairos search <query>`
+<a id="s-kairos-search-query"></a>
+## kairos search <query>
+
+> Capsule: Full-text over promoted sections, plus a graph route when the query names identities the
+
+Before project intake, omit `--workspace`: the same command queries the immutable, hash-verified
+framework corpus bundled with the harness. This mode creates no project state and records no
+retrieval trace. After project intake, supply `--workspace <path>` to query the mutable project
+projection under its normal freshness and governance boundary.
 
 Full-text over promoted sections, plus a graph route when the query names identities the
 graph stores.
@@ -56,7 +119,10 @@ nine anchors that all score alike and can bury the document you wanted.
 The result carries a `routing_receipt`. That receipt is the only legitimate way into
 `source-permit`, and it is single-use.
 
-## `kairos graph`
+<a id="s-kairos-graph"></a>
+## kairos graph
+
+> Capsule: Exact lookups against the four graph tables. All identity matching is exact — see
 
 Exact lookups against the four graph tables. All identity matching is exact — see
 *Misses* below.
@@ -101,7 +167,10 @@ this name at all* — and that is a real answer, not a failure.
 For `--predicate` the vocabulary is closed, so a miss lists the declared predicates
 instead of guessing.
 
+<a id="s-reaching-actual-source"></a>
 ## Reaching actual source
+
+> Capsule: Three steps, and the order is enforced.
 
 Three steps, and the order is enforced.
 
@@ -135,7 +204,10 @@ the section vocabulary, so a semantic pattern like `root cause|resolution` match
 header's own `facets` and `question` fields before it reaches the prose. Pattern on
 words that only occur in the body.
 
+<a id="s-picking-the-right-surface-for-a-counting-question"></a>
 ## Picking the right surface for a counting question
+
+> Capsule: Search cannot count; it returns sections. These are the four that can:
 
 Search cannot count; it returns sections. These are the four that can:
 
@@ -146,7 +218,10 @@ Search cannot count; it returns sections. These are the four that can:
 | what is declared but wrong | `--vocabulary` |
 | what is claimed but unanchored | `--integrity` |
 
+<a id="s-related"></a>
 ## Related
+
+> Capsule: OPERATIONS.md — the surrounding session flow: entry, freshness, heartbeat, closure
 
 - `OPERATIONS.md` — the surrounding session flow: entry, freshness, heartbeat, closure
 - `INGESTED_DOCUMENT_SPEC.md` — what the four graph tables mean and how identity is formed

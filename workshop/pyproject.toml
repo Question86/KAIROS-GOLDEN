@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "runtime-sync-workshop"
-version = "0.1.0"
+version = "0.1.0-alpha.2"
 description = "Fail-closed Runtime, blueprint, and KAIROS projection synchronization workshop"
 requires-python = ">=3.11"
 dependencies = []

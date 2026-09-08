@@ -1,4 +1,60 @@
++++
+schema = "kairos-context/v1"
+id = "KAIROS_INGESTED_DOCUMENT_SPEC"
+type = "documentation"
+revision = 1
+state = "active"
+authority = "architecture_authority"
+workspace = "KAIROS_FRAMEWORK"
+route = "KAIROS_FRAMEWORK/KAIROS_INGESTED_DOCUMENT_SPEC"
+updated_at = "2026-09-08T10:30:00Z"
+capsule = "Normative transfer format for ingested documents, normalized graph structures, evidence anchors and enforcement/reporting boundaries."
+claim_boundary = "This framework source owns the stable architecture it states; live project state, project-specific evidence, and execution results remain owned by their project authorities."
+entities = ["KAIROS", "KAIROS_INGESTED_DOCUMENT_SPEC"]
+facets = ["ingestion", "graph", "evidence", "schema"]
+criteria = []
+does_not_answer = ["live project state", "project-specific execution outcome"]
+
+[[answers]]
+intent = "ingestion"
+question = "How does KAIROS ingest an external structured document?"
+target = "s-the-two-step-transfer"
+
+[[answers]]
+intent = "graph"
+question = "How are ingested code-graph relations represented in KAIROS?"
+target = "s-header"
+
+[[answers]]
+intent = "evidence"
+question = "What are evidence anchors in an ingested KAIROS document?"
+target = "s-evidence-anchors"
+
+[[search_contract]]
+query = "How does KAIROS ingest an external structured document?"
+expected = "KAIROS_INGESTED_DOCUMENT_SPEC#s-the-two-step-transfer"
+required_top_k = 1
++++
 # KAIROS Ingested Document Specification
+
+## CONTEXT INDEX
+
+- [`s-overview`](#s-overview) — This is the contract a project fulfils so that its documents, and the normalized graph they
+- [`s-purpose`](#s-purpose) — A project produces one document per unit it describes. Each document is two things at once:
+- [`s-the-two-step-transfer`](#s-the-two-step-transfer) — KAIROS never writes into the project's own tree, and never rewrites a document to fit
+- [`s-origin`](#s-origin) — A document that was authored in another workspace declares that workspace in its header.
+- [`s-header`](#s-header) — The ordinary kairos-context/v1 header applies; see CONTEXT_HEADER_SPEC.md. An ingested
+- [`s-canonical-node-identity`](#s-canonical-node-identity) — The graph joins on exact strings. Choose an identifier in this order and never invent one
+- [`s-evidence-anchors`](#s-evidence-anchors) — Every graph row names the narrowest section that substantiates it. That anchor must exist
+- [`s-optional-a-source-ledger-section`](#s-optional-a-source-ledger-section) — A document may carry a line-numbered copy of the material it describes in its own section.
+- [`s-what-kairos-enforces-and-what-it-only-reports`](#s-what-kairos-enforces-and-what-it-only-reports) — Enforced, fail-closed, because the document is otherwise unusable:
+- [`s-reading-the-graph`](#s-reading-the-graph) — Every response carries its own total, so a truncated answer is visible as truncated rather
+- [`s-bounds`](#s-bounds) — | bound | value | applies to |
+
+<a id="s-overview"></a>
+## Overview
+
+> Capsule: This is the contract a project fulfils so that its documents, and the normalized graph they
 
 This is the contract a project fulfils so that its documents, and the normalized graph they
 carry, are transferred into KAIROS unchanged and become queryable.
@@ -7,7 +63,10 @@ It is deliberately project-neutral. Nothing here names a language, a codebase or
 A project decides *what* it describes; this document decides *how* the description is shaped
 so KAIROS can carry it without interpreting it.
 
+<a id="s-purpose"></a>
 ## Purpose
+
+> Capsule: A project produces one document per unit it describes. Each document is two things at once:
 
 A project produces one document per unit it describes. Each document is two things at once:
 
@@ -19,7 +78,10 @@ and where the evidence sits*. The document body answers *what the unit actually 
 agent queries the graph first and opens the named anchor second. That order is the point:
 it is what keeps the reading cost bounded as the corpus grows.
 
+<a id="s-the-two-step-transfer"></a>
 ## The two-step transfer
+
+> Capsule: KAIROS never writes into the project's own tree, and never rewrites a document to fit
 
 ```
 project produces documents  ->  documents are placed in a KAIROS document root
@@ -31,7 +93,10 @@ itself. Where a document and the harness disagree on a bound, the harness is the
 changes. Where a document contradicts its own declared vocabulary, the row is stored as
 written and reported as a finding.
 
+<a id="s-origin"></a>
 ## Origin
+
+> Capsule: A document that was authored in another workspace declares that workspace in its header.
 
 A document that was authored in another workspace declares that workspace in its header.
 The host lists the origins it accepts in `.kairos/config.json`:
@@ -53,7 +118,10 @@ external leaves — typed and stored, never followed, never expanded.
 
 This is what makes the corpus portable. The document remains true in its own namespace.
 
+<a id="s-header"></a>
 ## Header
+
+> Capsule: The ordinary kairos-context/v1 header applies; see CONTEXT_HEADER_SPEC.md. An ingested
 
 The ordinary `kairos-context/v1` header applies; see `CONTEXT_HEADER_SPEC.md`. An ingested
 document additionally may declare any of four normalized arrays. Declaring at least one of
@@ -130,7 +198,10 @@ evidence_target = "s-<anchor>"
 
 A record belongs here only when the difference was *measured*. A suspicion is not drift.
 
+<a id="s-canonical-node-identity"></a>
 ## Canonical node identity
+
+> Capsule: The graph joins on exact strings. Choose an identifier in this order and never invent one
 
 The graph joins on exact strings. Choose an identifier in this order and never invent one
 when a real identity exists:
@@ -146,7 +217,10 @@ when a real identity exists:
 The same thing carries the same identifier everywhere in the corpus. The graph must join
 without fuzzy matching; that property is worth more than convenient prose.
 
+<a id="s-evidence-anchors"></a>
 ## Evidence anchors
+
+> Capsule: Every graph row names the narrowest section that substantiates it. That anchor must exist
 
 Every graph row names the narrowest section that substantiates it. That anchor must exist
 in the declaring document. This is the link that turns a graph fact into evidence:
@@ -158,7 +232,10 @@ graph row -> document -> anchor -> the passage that proves it
 An anchor that resolves to no section is reported by `graph --integrity`. The row survives;
 the defect is named.
 
+<a id="s-optional-a-source-ledger-section"></a>
 ## Optional: a source ledger section
+
+> Capsule: A document may carry a line-numbered copy of the material it describes in its own section.
 
 A document may carry a line-numbered copy of the material it describes in its own section.
 Where a project does this, the section becomes the corpus's exact-literal surface: an
@@ -168,7 +245,10 @@ tree.
 This is optional and it is not free. Such a section is the largest object KAIROS stores;
 `MAX_SECTION_BYTES` is sized for it.
 
+<a id="s-what-kairos-enforces-and-what-it-only-reports"></a>
 ## What KAIROS enforces, and what it only reports
+
+> Capsule: Enforced, fail-closed, because the document is otherwise unusable:
 
 Enforced, fail-closed, because the document is otherwise unusable:
 
@@ -197,7 +277,10 @@ imports without that opt-in remain promotion gates.
 The distinction is deliberate. A corpus is allowed to be imperfect; it is not allowed to be
 silently imperfect.
 
+<a id="s-reading-the-graph"></a>
 ## Reading the graph
+
+> Capsule: Every response carries its own total, so a truncated answer is visible as truncated rather
 
 ```
 kairos graph --artifact <ID>      every declared structure of one document
@@ -260,7 +343,10 @@ seen, so a truncated walk is visible as truncated.
 `graph_chase`. It is a different chain from `context_chase`, which follows declared header
 references between documents; both are reported, neither replaces the other.
 
+<a id="s-bounds"></a>
 ## Bounds
+
+> Capsule: | bound | value | applies to |
 
 | bound | value | applies to |
 |---|---|---|

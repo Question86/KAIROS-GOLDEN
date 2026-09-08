@@ -1,4 +1,40 @@
++++
+schema = "kairos-context/v1"
+id = "KAIROS_OPERATING_MODEL"
+type = "documentation"
+revision = 1
+state = "active"
+authority = "operating_contract"
+workspace = "KAIROS_FRAMEWORK"
+route = "KAIROS_FRAMEWORK/KAIROS_OPERATING_MODEL"
+updated_at = "2026-09-08T10:30:00Z"
+capsule = "Defines the operating model linking Human intent, bounded context acquisition, governed action, same-heartbeat promotion and verification."
+claim_boundary = "This framework source owns the procedure and rules it states; it does not prove live project state, project outcomes, or facts outside its declared scope."
+entities = ["KAIROS", "KAIROS_OPERATING_MODEL"]
+facets = ["operating-model", "workflow", "context"]
+criteria = []
+does_not_answer = ["live project state", "project-specific execution outcome"]
+
+[[answers]]
+intent = "operating_model"
+question = "What is the KAIROS operating model?"
+target = "s-overview"
+
+[[search_contract]]
+query = "What is the KAIROS operating model?"
+expected = "KAIROS_OPERATING_MODEL#s-overview"
+required_top_k = 1
++++
 # Operating model
+
+## CONTEXT INDEX
+
+- [`s-overview`](#s-overview) — Use the same bounded sequence for every material action:
+
+<a id="s-overview"></a>
+## Overview
+
+> Capsule: Use the same bounded sequence for every material action:
 
 Use the same bounded sequence for every material action:
 

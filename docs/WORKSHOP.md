@@ -1,4 +1,57 @@
++++
+schema = "kairos-context/v1"
+id = "KAIROS_WORKSHOP"
+type = "documentation"
+revision = 1
+state = "active"
+authority = "operating_contract"
+workspace = "KAIROS_FRAMEWORK"
+route = "KAIROS_FRAMEWORK/KAIROS_WORKSHOP"
+updated_at = "2026-09-08T10:30:00Z"
+capsule = "Authoritative synchronized-change lifecycle for governed code/headers, metadata, shadow verification, postcheck and authority migration."
+claim_boundary = "This framework source owns the procedure and rules it states; it does not prove live project state, project outcomes, or facts outside its declared scope."
+entities = ["KAIROS", "KAIROS_WORKSHOP"]
+facets = ["workshop", "transaction", "topology", "authority-migration"]
+criteria = []
+does_not_answer = ["live project state", "project-specific execution outcome"]
+
+[[answers]]
+intent = "workshop"
+question = "How do I modify governed code through the KAIROS Workshop?"
+target = "s-overview"
+
+[[answers]]
+intent = "topology"
+question = "How does the Workshop handle include-owner topology changes?"
+target = "s-header-and-topology-behavior"
+
+[[answers]]
+intent = "migration"
+question = "When is KAIROS authority migration required?"
+target = "s-authority-migration"
+
+[[answers]]
+intent = "migration"
+question = "When is authority migration required?"
+target = "s-authority-migration"
+
+[[search_contract]]
+query = "How do I modify governed code through the KAIROS Workshop?"
+expected = "KAIROS_WORKSHOP#s-overview"
+required_top_k = 1
++++
 # Workshop module
+
+## CONTEXT INDEX
+
+- [`s-overview`](#s-overview) — The Workshop is a fail-closed synchronizer for a separately configured codebase, its
+- [`s-header-and-topology-behavior`](#s-header-and-topology-behavior) — Header-only project records are valid Workshop checkout targets and can be changed through
+- [`s-authority-migration`](#s-authority-migration) — authority-checkout requires an isolated candidate project tree plus its compile_commands.json
+
+<a id="s-overview"></a>
+## Overview
+
+> Capsule: The Workshop is a fail-closed synchronizer for a separately configured codebase, its
 
 The Workshop is a fail-closed synchronizer for a separately configured codebase, its
 implementation documents and its KAIROS projection. It is shipped unbound and becomes
@@ -30,7 +83,10 @@ by changed implementation documents, while derived live state and receipts remai
 heartbeat, verifies the complete corpus, reseals and releases the lease. A successful result
 is `POSTCHECK_VERIFIED` with a bit-exact receipt.
 
+<a id="s-header-and-topology-behavior"></a>
 ## Header and topology behavior
+
+> Capsule: Header-only project records are valid Workshop checkout targets and can be changed through
 
 Header-only project records are valid Workshop checkout targets and can be changed through
 the same synchronized lifecycle as translation units.
@@ -50,7 +106,10 @@ explicit authority-migration lifecycle below. Translation-unit membership or nor
 context changes are stronger still and are refused by the generic migration with
 `BUILD_AUTHORITY_MIGRATION_REQUIRED`.
 
+<a id="s-authority-migration"></a>
 ## Authority migration
+
+> Capsule: authority-checkout requires an isolated candidate project tree plus its compile_commands.json
 
 ```text
 authority-checkout -> authority review -> authority-prepare -> authority-verify -> authority-apply

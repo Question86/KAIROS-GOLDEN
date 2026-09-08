@@ -10,6 +10,7 @@ from typing import Any
 from .backup import create_backup, recover_artifact_revisions, restore_drill, verify_backup
 from .database import KnowledgeDatabase
 from .freshness import ensure_workspace_fresh
+from .framework import search_framework, verify_framework_bundle
 from .frontmatter import render_frontmatter, split_frontmatter
 from .golden import (
     build_golden_template,
@@ -233,7 +234,7 @@ def build_parser() -> argparse.ArgumentParser:
     heartbeat.add_argument("--metrics-json", default="")
 
     search = sub.add_parser("search", help="Question-first section search with typed context chase")
-    search.add_argument("--workspace", required=True)
+    search.add_argument("--workspace", default="", help="Project workspace. Omit before project intake to query the bundled framework corpus.")
     search.add_argument("query")
     search.add_argument("--mode", choices=("depth", "breadth", "breathe", "work", "verify"), default="breadth")
     search.add_argument("--limit", type=int, default=10)
@@ -551,6 +552,20 @@ SOURCE_ONLY_STARTER_COMMANDS = {"starter-check", "goal-prompt"}
 
 def execute(args: argparse.Namespace) -> tuple[Any, int]:
     command = args.command
+    # The immutable framework corpus is intentionally searchable before a project workspace
+    # exists. This is the bootstrap edge: an agent can ask KAIROS how KAIROS must be used
+    # without inventing a temporary task, database, receipt or governance state.
+    if command == "search" and not args.workspace:
+        if args.trace:
+            raise ValueError("framework bootstrap search is immutable and does not record retrieval traces")
+        result = search_framework(
+            args.query,
+            limit=args.limit,
+            candidate_limit=args.candidate_limit,
+            mode=args.mode,
+            max_hops=args.max_hops,
+        )
+        return result, 0 if result["result_count"] else 1
     workspace = _workspace(args.workspace)
     # These are deliberately narrow pre-governance commands. A fresh golden starter
     # has no database or active task yet, so it cannot issue a normal action permit.

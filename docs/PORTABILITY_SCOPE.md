@@ -1,9 +1,56 @@
++++
+schema = "kairos-context/v1"
+id = "KAIROS_PORTABILITY_SCOPE"
+type = "documentation"
+revision = 1
+state = "active"
+authority = "architecture_authority"
+workspace = "KAIROS_FRAMEWORK"
+route = "KAIROS_FRAMEWORK/KAIROS_PORTABILITY_SCOPE"
+updated_at = "2026-09-08T10:30:00Z"
+capsule = "Defines what the reusable framework package includes, excludes as authority, and requires for portability acceptance."
+claim_boundary = "This framework source owns the stable architecture it states; live project state, project-specific evidence, and execution results remain owned by their project authorities."
+entities = ["KAIROS", "KAIROS_PORTABILITY_SCOPE"]
+facets = ["portability", "distribution", "acceptance"]
+criteria = []
+does_not_answer = ["live project state", "project-specific execution outcome"]
+
+[[answers]]
+intent = "portability"
+question = "What is included in the portable KAIROS framework?"
+target = "s-included"
+
+[[answers]]
+intent = "portability"
+question = "What is not distributed as KAIROS authority?"
+target = "s-not-distributed-as-authority"
+
+[[search_contract]]
+query = "What is included in the portable KAIROS framework?"
+expected = "KAIROS_PORTABILITY_SCOPE#s-included"
+required_top_k = 1
++++
 # Framework portability scope
+
+## CONTEXT INDEX
+
+- [`s-overview`](#s-overview) — This package is a project-agnostic framework distribution. It must remain separable from
+- [`s-included`](#s-included) — | Module | Included material | Reason |
+- [`s-not-distributed-as-authority`](#s-not-distributed-as-authority) — The package must not rely on or publish a live customer/project source tree, project-bound
+- [`s-portability-acceptance`](#s-portability-acceptance) — Portability is not established by importing the package itself. A release candidate must
+
+<a id="s-overview"></a>
+## Overview
+
+> Capsule: This package is a project-agnostic framework distribution. It must remain separable from
 
 This package is a project-agnostic framework distribution. It must remain separable from
 any project/customer workspace, transaction history or machine-local authority.
 
+<a id="s-included"></a>
 ## Included
+
+> Capsule: | Module | Included material | Reason |
 
 | Module | Included material | Reason |
 |---|---|---|
@@ -14,7 +61,10 @@ any project/customer workspace, transaction history or machine-local authority.
 | Workspace self-model | source documents under `workspace/` | inspectable framework example only; not a customer project starter |
 | Templates | project-neutral configuration templates | portable configuration surface |
 
+<a id="s-not-distributed-as-authority"></a>
 ## Not distributed as authority
+
+> Capsule: The package must not rely on or publish a live customer/project source tree, project-bound
 
 The package must not rely on or publish a live customer/project source tree, project-bound
 intake, local SQLite/WAL/SHM, runtime state, Workshop transaction, lease, seal, build output,
@@ -26,7 +76,10 @@ advertised as an executable first-run project because publication intentionally 
 runtime state/database. Real use starts with `kickstart prompt` and a fresh external
 workspace.
 
+<a id="s-portability-acceptance"></a>
 ## Portability acceptance
+
+> Capsule: Portability is not established by importing the package itself. A release candidate must
 
 Portability is not established by importing the package itself. A release candidate must
 prove all of the following on an external temporary project:

@@ -192,6 +192,7 @@ ROOT_GITIGNORE = """# Python and test products
 
 # Reconstructed runtime and local recovery packages
 *.db
+!/kairos_harness/kairos/framework.db
 *.db-wal
 *.db-shm
 /kairos_workspace/.kairos/*

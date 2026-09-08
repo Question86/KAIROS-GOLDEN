@@ -7,6 +7,7 @@ from typing import Iterable
 
 from .constants import MAX_REFERENCES, RELATION_TYPES
 from .util import resolve_workspace_path
+from .markdown import mask_markdown_code
 
 
 class ReferenceError(ValueError):
@@ -63,7 +64,8 @@ def parse_reference(raw: str) -> Reference:
 
 
 def iter_references(text: str) -> Iterable[Reference]:
-    for match in REF_RE.finditer(text):
+    searchable = mask_markdown_code(text)
+    for match in REF_RE.finditer(searchable):
         yield parse_reference(match.group(1).strip())
 
 

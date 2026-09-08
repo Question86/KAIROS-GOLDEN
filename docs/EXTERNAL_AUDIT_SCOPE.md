@@ -1,9 +1,57 @@
++++
+schema = "kairos-context/v1"
+id = "KAIROS_EXTERNAL_AUDIT_SCOPE"
+type = "documentation"
+revision = 1
+state = "active"
+authority = "operating_contract"
+workspace = "KAIROS_FRAMEWORK"
+route = "KAIROS_FRAMEWORK/KAIROS_EXTERNAL_AUDIT_SCOPE"
+updated_at = "2026-09-08T10:30:00Z"
+capsule = "Defines external audit, publication exclusions, reproducible package checks and external-project validation procedure."
+claim_boundary = "This framework source owns the procedure and rules it states; it does not prove live project state, project outcomes, or facts outside its declared scope."
+entities = ["KAIROS", "KAIROS_EXTERNAL_AUDIT_SCOPE"]
+facets = ["audit", "release", "reproducibility"]
+criteria = []
+does_not_answer = ["live project state", "project-specific execution outcome"]
+
+[[answers]]
+intent = "audit"
+question = "How should a KAIROS release be externally audited?"
+target = "s-overview"
+
+[[answers]]
+intent = "publication"
+question = "What must be excluded from a published KAIROS package?"
+target = "s-explicit-publication-exclusions"
+
+[[search_contract]]
+query = "How should a KAIROS release be externally audited?"
+expected = "KAIROS_EXTERNAL_AUDIT_SCOPE#s-overview"
+required_top_k = 1
++++
 # External audit and release-validation scope
+
+## CONTEXT INDEX
+
+- [`s-overview`](#s-overview) — Review the framework from an isolated copy. Do not create audit tasks, reports, databases or
+- [`s-included-surfaces`](#s-included-surfaces) — | Area | Paths |
+- [`s-explicit-publication-exclusions`](#s-explicit-publication-exclusions) — Customer/project source trees, binaries, datasets, result artifacts or domain rules.
+- [`s-reproducible-package-checks`](#s-reproducible-package-checks) — From the package root:
+- [`s-reproducible-external-project-check`](#s-reproducible-external-project-check) — 1. Create a temporary C/C++ project and compiler database.
+
+<a id="s-overview"></a>
+## Overview
+
+> Capsule: Review the framework from an isolated copy. Do not create audit tasks, reports, databases or
 
 Review the framework from an isolated copy. Do not create audit tasks, reports, databases or
 transactions inside the canonical publication tree merely to audit it.
 
+<a id="s-included-surfaces"></a>
 ## Included surfaces
+
+> Capsule: | Area | Paths |
 
 | Area | Paths |
 |---|---|
@@ -14,7 +62,10 @@ transactions inside the canonical publication tree merely to audit it.
 | Templates | `templates/` |
 | Framework self-model | source documents under `workspace/` |
 
+<a id="s-explicit-publication-exclusions"></a>
 ## Explicit publication exclusions
+
+> Capsule: Customer/project source trees, binaries, datasets, result artifacts or domain rules.
 
 - Customer/project source trees, binaries, datasets, result artifacts or domain rules.
 - Project-bound `.kairos/project-intake/`, Workshop transactions, leases, seals or runtime corpora.
@@ -23,7 +74,10 @@ transactions inside the canonical publication tree merely to audit it.
 - Git metadata, credentials, machine-local paths and remote-operation receipts.
 - Audit-only scratch workspaces and reports.
 
+<a id="s-reproducible-package-checks"></a>
 ## Reproducible package checks
+
+> Capsule: From the package root:
 
 From the package root:
 
@@ -46,7 +100,10 @@ database as a side effect. To verify source-only reproducibility, copy `workspac
 location, run `kairos rebuild-derived` there, then require `kairos health --full` to pass. Never
 materialize those derived files back into the canonical publication tree.
 
+<a id="s-reproducible-external-project-check"></a>
 ## Reproducible external-project check
+
+> Capsule: 1. Create a temporary C/C++ project and compiler database.
 
 1. Create a temporary C/C++ project and compiler database.
 2. Generate/review a `kairos-project-kickoff/v1` contract from Human intent:

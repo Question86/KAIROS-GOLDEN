@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass
 
 from .constants import FIRST_WINDOW_BYTES, MAX_SECTION_BYTES, MAX_SECTIONS
+from .markdown import mask_markdown_code
 
 
 class SectionError(ValueError):
@@ -58,7 +59,8 @@ def parse_sections(body: str, *, header_bytes: int, ingested: bool = False) -> l
     # deviation stays visible: the corpus census reports every document that omits it.
     if not ingested and "## CONTEXT INDEX" not in body:
         raise SectionError("document must contain '## CONTEXT INDEX' immediately after its title")
-    matches = list(ANCHOR_HEADING_RE.finditer(body))
+    structural = mask_markdown_code(body)
+    matches = list(ANCHOR_HEADING_RE.finditer(structural))
     if not matches:
         raise SectionError("document contains no stable <a id=\"s-*\"></a> section anchors")
     if len(matches) > MAX_SECTIONS:
@@ -96,7 +98,7 @@ def parse_sections(body: str, *, header_bytes: int, ingested: bool = False) -> l
                 position=position,
             )
         )
-    all_h2 = [value.strip() for value in re.findall(r"^##\s+([^\n]+)$", body, re.MULTILINE)]
+    all_h2 = [value.strip() for value in re.findall(r"^##\s+([^\n]+)$", structural, re.MULTILINE)]
     expected = ["CONTEXT INDEX", *[section.title for section in sections]]
     unexpected = [title for title in all_h2 if title not in expected]
     if unexpected:

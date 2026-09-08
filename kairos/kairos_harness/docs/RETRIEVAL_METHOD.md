@@ -1,4 +1,61 @@
++++
+schema = "kairos-context/v1"
+id = "KAIROS_RETRIEVAL_METHOD"
+type = "documentation"
+revision = 1
+state = "active"
+authority = "operating_contract"
+workspace = "KAIROS_FRAMEWORK"
+route = "KAIROS_FRAMEWORK/KAIROS_RETRIEVAL_METHOD"
+updated_at = "2026-09-08T10:30:00Z"
+capsule = "Decision procedure for choosing metadata search, graph, exact source search, hop depth, source escalation and confidence boundaries."
+claim_boundary = "This framework source owns the procedure and rules it states; it does not prove live project state, project outcomes, or facts outside its declared scope."
+entities = ["KAIROS", "KAIROS_RETRIEVAL_METHOD"]
+facets = ["retrieval", "search", "graph", "source-escalation"]
+criteria = []
+does_not_answer = ["live project state", "project-specific execution outcome"]
+
+[[answers]]
+intent = "retrieval"
+question = "When should I use depth, breadth, breathe, work or verify search modes?"
+target = "s-1-decision-table"
+
+[[answers]]
+intent = "source_search"
+question = "When should KAIROS escalate from metadata search to source inspection?"
+target = "s-6-the-source-escalation-is-a-fixed-three-step-chain"
+
+[[answers]]
+intent = "search"
+question = "What should not be sent to KAIROS section search?"
+target = "s-2-never-send-a-counting-question-to-search"
+
+[[search_contract]]
+query = "When should I use depth, breadth, breathe, work or verify search modes?"
+expected = "KAIROS_RETRIEVAL_METHOD#s-1-decision-table"
+required_top_k = 1
++++
 # Retrieval method — how to find context without wasting it
+
+## CONTEXT INDEX
+
+- [`s-overview`](#s-overview) — **Read this before your first retrieval call in a session.** It is a decision procedure,
+- [`s-1-decision-table`](#s-1-decision-table) — Classify the question, then run the row. Do not start with search by default.
+- [`s-2-never-send-a-counting-question-to-search`](#s-2-never-send-a-counting-question-to-search) — search returns ranked sections. It has no aggregate. It cannot answer "how many".
+- [`s-3-name-an-identifier-only-when-it-is-rare`](#s-3-name-an-identifier-only-when-it-is-rare) — This is the least obvious rule and the one that costs the most when violated.
+- [`s-4-an-exact-string-in-files-is-rg-s-question`](#s-4-an-exact-string-in-files-is-rg-s-question) — Locating the single document that defines a rare qualified symbol:
+- [`s-5-one-hop-is-cheap-anywhere-two-hops-only-in-the-graph`](#s-5-one-hop-is-cheap-anywhere-two-hops-only-in-the-graph) — Neighbourhood of one header file:
+- [`s-6-the-source-escalation-is-a-fixed-three-step-chain`](#s-6-the-source-escalation-is-a-fixed-three-step-chain) — Three things that will cost you a retry:
+- [`s-7-inspection-root-is-a-wall-not-a-preference`](#s-7-inspection-root-is-a-wall-not-a-preference) — KAIROS reads only what is promoted, and source-permit reaches only inside
+- [`s-8-reading-an-empty-result`](#s-8-reading-an-empty-result) — An empty result is **not** automatically a finding. --node, --asset and --predicate
+- [`s-9-anti-patterns`](#s-9-anti-patterns) — | Do not | Because | Instead |
+- [`s-10-confidence-of-each-claim`](#s-10-confidence-of-each-claim) — | Claim | Basis |
+- [`s-related`](#s-related) — SEARCH_INDEX.md — what every surface returns, flag by flag
+
+<a id="s-overview"></a>
+## Overview
+
+> Capsule: **Read this before your first retrieval call in a session.** It is a decision procedure,
 
 **Read this before your first retrieval call in a session.** It is a decision procedure,
 not background. Following it changes token cost by up to three orders of magnitude on the
@@ -10,7 +67,10 @@ at the end; the rules come first because you need them first.
 
 ---
 
+<a id="s-1-decision-table"></a>
 ## 1. Decision table
+
+> Capsule: Classify the question, then run the row. Do not start with search by default.
 
 Classify the question, then run the row. Do not start with `search` by default.
 
@@ -30,7 +90,10 @@ Classify the question, then run the row. Do not start with `search` by default.
 
 ---
 
-## 2. Never send a counting question to `search`
+<a id="s-2-never-send-a-counting-question-to-search"></a>
+## 2. Never send a counting question to search
+
+> Capsule: search returns ranked sections. It has no aggregate. It cannot answer "how many".
 
 `search` returns ranked sections. It has no aggregate. It cannot answer "how many".
 
@@ -51,7 +114,10 @@ it is the loop you will reach for if you have not read this section.
 
 ---
 
+<a id="s-3-name-an-identifier-only-when-it-is-rare"></a>
 ## 3. Name an identifier only when it is rare
+
+> Capsule: This is the least obvious rule and the one that costs the most when violated.
 
 This is the least obvious rule and the one that costs the most when violated.
 
@@ -106,7 +172,10 @@ this. Re-ask in prose without the identifier.
 
 ---
 
-## 4. An exact string in files is `rg`'s question
+<a id="s-4-an-exact-string-in-files-is-rg-s-question"></a>
+## 4. An exact string in files is rg's question
+
+> Capsule: Locating the single document that defines a rare qualified symbol:
 
 Locating the single document that defines a rare qualified symbol:
 
@@ -126,7 +195,10 @@ anything two hops out are not in the text and cannot be grepped.
 
 ---
 
+<a id="s-5-one-hop-is-cheap-anywhere-two-hops-only-in-the-graph"></a>
 ## 5. One hop is cheap anywhere; two hops only in the graph
+
+> Capsule: Neighbourhood of one header file:
 
 Neighbourhood of one header file:
 
@@ -144,7 +216,10 @@ against `edge_read` per hop, and tells you when it truncated.
 
 ---
 
+<a id="s-6-the-source-escalation-is-a-fixed-three-step-chain"></a>
 ## 6. The source escalation is a fixed three-step chain
+
+> Capsule: Three things that will cost you a retry:
 
 ```
 search "<question>"                                   -> routing_receipt.routing_receipt_id = SRR_…
@@ -168,7 +243,10 @@ Three things that will cost you a retry:
 
 ---
 
-## 7. `inspection_root` is a wall, not a preference
+<a id="s-7-inspection-root-is-a-wall-not-a-preference"></a>
+## 7. inspection_root is a wall, not a preference
+
+> Capsule: KAIROS reads only what is promoted, and source-permit reaches only inside
 
 KAIROS reads only what is promoted, and `source-permit` reaches only inside
 `inspection_root`. A path outside it is refused at every purpose:
@@ -187,7 +265,10 @@ where the bytes live.
 
 ---
 
+<a id="s-8-reading-an-empty-result"></a>
 ## 8. Reading an empty result
+
+> Capsule: An empty result is **not** automatically a finding. --node, --asset and --predicate
 
 An empty result is **not** automatically a finding. `--node`, `--asset` and `--predicate`
 attach a `no_match` block that separates the two cases:
@@ -202,7 +283,10 @@ Only the second is evidence about the corpus. Never report the first as "not in 
 
 ---
 
+<a id="s-9-anti-patterns"></a>
 ## 9. Anti-patterns
+
+> Capsule: | Do not | Because | Instead |
 
 | Do not | Because | Instead |
 |---|---|---|
@@ -216,7 +300,10 @@ Only the second is evidence about the corpus. Never report the first as "not in 
 
 ---
 
+<a id="s-10-confidence-of-each-claim"></a>
 ## 10. Confidence of each claim
+
+> Capsule: | Claim | Basis |
 
 | Claim | Basis |
 |---|---|
@@ -233,7 +320,10 @@ prose column is optimistic.
 
 ---
 
+<a id="s-related"></a>
 ## Related
+
+> Capsule: SEARCH_INDEX.md — what every surface returns, flag by flag
 
 - `SEARCH_INDEX.md` — what every surface returns, flag by flag
 - `OPERATIONS.md` — the session flow these surfaces sit inside

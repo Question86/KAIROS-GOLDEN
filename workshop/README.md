@@ -1,4 +1,40 @@
++++
+schema = "kairos-context/v1"
+id = "KAIROS_WORKSHOP_README"
+type = "documentation"
+revision = 1
+state = "active"
+authority = "operating_contract"
+workspace = "KAIROS_FRAMEWORK"
+route = "KAIROS_FRAMEWORK/KAIROS_WORKSHOP_README"
+updated_at = "2026-09-08T10:30:00Z"
+capsule = "Compact Runtime Sync Workshop entry surface and role summary."
+claim_boundary = "This framework source owns the procedure and rules it states; it does not prove live project state, project outcomes, or facts outside its declared scope."
+entities = ["KAIROS", "KAIROS_WORKSHOP_README"]
+facets = ["workshop", "entry"]
+criteria = []
+does_not_answer = ["live project state", "project-specific execution outcome"]
+
+[[answers]]
+intent = "workshop"
+question = "What is the Runtime Sync Workshop?"
+target = "s-overview"
+
+[[search_contract]]
+query = "What is the Runtime Sync Workshop?"
+expected = "KAIROS_WORKSHOP_README#s-overview"
+required_top_k = 1
++++
 # Runtime Sync Workshop
+
+## CONTEXT INDEX
+
+- [`s-overview`](#s-overview) — This package is a project-neutral, fail-closed synchronizer for a configured source tree,
+
+<a id="s-overview"></a>
+## Overview
+
+> Capsule: This package is a project-neutral, fail-closed synchronizer for a configured source tree,
 
 This package is a project-neutral, fail-closed synchronizer for a configured source tree,
 blueprints, and KAIROS projection. It is intentionally unbound: copy
