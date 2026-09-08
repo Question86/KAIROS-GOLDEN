@@ -1,0 +1,205 @@
+name: Publish KAIROS alpha.2
+
+on:
+  push:
+    branches:
+      - release-candidate-alpha2
+    paths:
+      - .github/workflows/publish-alpha2.yml
+      - release-alpha2/**
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out release candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Verify publication base
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=7a67a38a7bd1de5a68307f51644aed0b5ed86196
+          MAIN="$(git ls-remote origin refs/heads/main | cut -f1)"
+          test "$MAIN" = "$BASE"
+          test -z "$(git ls-remote --tags origin refs/tags/v0.1.0-alpha.2)"
+
+      - name: Reconstruct alpha.2 source patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -B release-alpha2/rebuild.py
+          test "$(sha256sum release-alpha2/KAIROS-alpha2-source.patch | cut -d' ' -f1)" = "8d97f550be38ddf4837b09fd969de2d99aa3886a3088bb6ad59b7304c900bc2f"
+
+      - name: Materialize clean publication tree and framework index
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=7a67a38a7bd1de5a68307f51644aed0b5ed86196
+          rm -rf /tmp/kairos-publish
+          git worktree add --detach /tmp/kairos-publish "$BASE"
+          cd /tmp/kairos-publish
+          git apply "$GITHUB_WORKSPACE/release-alpha2/KAIROS-alpha2-source.patch"
+          export PYTHONPATH="$PWD/kairos/kairos_harness:$PWD/workshop/src:$PWD"
+          python -B scripts/build_framework_index.py --verify-determinism
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          manifest=json.loads(Path('kairos/kairos_harness/kairos/framework_manifest.json').read_text())
+          assert manifest['schema']=='kairos-framework-index/v1'
+          assert manifest['document_count']==23
+          assert manifest['version']=='0.1.0-alpha.2'
+          print('framework_db_sha256='+manifest['database_sha256'])
+          PY
+          test "$(find . -type f ! -path './.git/*' | wc -l)" -eq 143
+          git diff --check
+
+      - name: Run release regression suites
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/kairos-publish
+          export PYTHONPATH="$ROOT/kairos/kairos_harness:$ROOT/workshop/src:$ROOT"
+          cd "$ROOT/kairos/kairos_harness"
+          test "$(grep -R --include='test_*.py' -h '^    def test_' tests | wc -l)" -eq 145
+          for f in tests/test_*.py; do
+            echo "=== $(basename "$f") ==="
+            python -B -m unittest discover -s tests -p "$(basename "$f")" -v
+          done
+          cd "$ROOT"
+          test "$(grep -R --include='test_*.py' -h '^    def test_' kickstart/tests | wc -l)" -eq 18
+          python -B -m unittest discover -s kickstart/tests -p 'test_*.py' -v
+          test "$(grep -R --include='test_*.py' -h '^    def test_' workshop/tests | wc -l)" -eq 21
+          python -B -m unittest discover -s workshop/tests -p 'test_*.py' -v
+          python -m compileall -q kairos/kairos_harness/kairos kickstart workshop/src/runtime_sync_workshop
+          find "$ROOT" -type d -name '__pycache__' -prune -exec rm -rf {} +
+          rm -rf "$ROOT/kairos/kairos_harness/tests/_tmp"
+          find "$ROOT" -type f -name '*.pyc' -delete
+          test "$(find "$ROOT" -type f ! -path '*/.git/*' | wc -l)" -eq 143
+
+      - name: Cold bootstrap and real-project integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/kairos-publish
+          export PYTHONPATH="$ROOT/kairos/kairos_harness:$ROOT/workshop/src:$ROOT"
+          cd "$ROOT"
+          python -B kairos_cli.py search 'How do I query KAIROS rules before a project workspace exists?' > /tmp/q1.json
+          python -B kairos_cli.py search 'What owns translation-unit membership?' > /tmp/q2.json
+          python -B kairos_cli.py search 'When is authority migration required?' > /tmp/q3.json
+          python - <<'PY'
+          import json
+          checks=[('/tmp/q1.json','KAIROS_FRAMEWORK_BOOTSTRAP','s-before-project-intake'),('/tmp/q2.json','KAIROS_ARCHITECTURE','s-overview'),('/tmp/q3.json','KAIROS_WORKSHOP','s-authority-migration')]
+          for path,aid,sid in checks:
+              data=json.load(open(path))
+              assert data['corpus']=='framework'
+              assert data['framework']['verified'] is True
+              assert data['framework']['source_documents_verified']==23
+              assert data['primary']['artifact_id']==aid
+              assert data['primary']['section_id']==sid
+          PY
+          test "$(find "$ROOT" -type f -name 'kairos.db' | wc -l)" -eq 0
+          test "$(find "$ROOT" -type f -name '*.db' | wc -l)" -eq 1
+
+          rm -rf /tmp/kairos-real /tmp/kairos-workspace /tmp/kairos-build
+          mkdir -p /tmp/kairos-real
+          cat > /tmp/kairos-real/CMakeLists.txt <<'EOF'
+          project(CMakeHelloWorld)
+          add_executable(hello hello.cpp)
+          EOF
+          cat > /tmp/kairos-real/hello.cpp <<'EOF'
+          #include <iostream>
+          int main(int argc, char** argv)
+          {
+            std::cout << "Hello, World!" << std::endl;
+            return 0;
+          }
+          EOF
+          cat > /tmp/project-spec.json <<'EOF'
+          {
+            "schema":"kairos-project-kickoff/v1",
+            "goal":{"schema":"kairos-goal/v1","id":"GOAL_CMAKE_HELLO","title":"Maintain CMakeHelloWorld under verified KAIROS governance","objective":"Preserve program behavior while establishing a compiler-backed synchronized project context.","state":"active","milestones":[{"id":"MILESTONE_CMAKE_HELLO_01","title":"Verified project baseline","objective":"Create and verify the compiler-backed baseline.","state":"active","depends_on":[],"criteria":[{"id":"CRIT_CMAKE_HELLO_001","description":"The external CMake project is bound to a verified compiler-backed KAIROS corpus.","state":"active","evidence_required":"Verified intake, Workshop status and seal.","required_artifact_types":["report","code"]}]}]},
+            "task":{"id":"TASK_CMAKE_HELLO_001","title":"Establish governed project baseline","objective":"Bind and seal the external project.","milestone":"MILESTONE_CMAKE_HELLO_01","criteria":["CRIT_CMAKE_HELLO_001"]}
+          }
+          EOF
+          python -B -m kickstart init --project-root /tmp/kairos-real --workspace /tmp/kairos-workspace --spec-file /tmp/project-spec.json --cmake /tmp/kairos-real/CMakeLists.txt > /tmp/intake.json
+          python - <<'PY'
+          import json
+          data=json.load(open('/tmp/intake.json'))
+          assert data['verified'] is True
+          assert data['translation_units']==1
+          PY
+          CONFIG=/tmp/kairos-workspace/.kairos/workshop.config.json
+          python -B -m runtime_sync_workshop --config "$CONFIG" status > /tmp/status0.json
+          python -B -m runtime_sync_workshop --config "$CONFIG" seal > /tmp/seal0.json
+          cmake -S /tmp/kairos-real -B /tmp/kairos-build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON >/tmp/cmake-configure.log 2>&1
+          cmake --build /tmp/kairos-build >/tmp/cmake-build.log 2>&1
+          test "$(/tmp/kairos-build/hello)" = 'Hello, World!'
+          python -B kairos_cli.py search 'How should an LLM acquire context in KAIROS?' > /tmp/framework-after.json
+          python -B kairos_cli.py search --workspace /tmp/kairos-workspace 'Which compiler include roots are bound to hello.cpp?' > /tmp/project-search.json
+          python -B -m runtime_sync_workshop --config "$CONFIG" status > /tmp/final-status.json
+          python - <<'PY'
+          import json
+          before=json.load(open('/tmp/status0.json'))
+          seal=json.load(open('/tmp/seal0.json'))
+          framework=json.load(open('/tmp/framework-after.json'))
+          project=json.load(open('/tmp/project-search.json'))
+          final=json.load(open('/tmp/final-status.json'))
+          assert before['verified'] is True and before['counts']['issues']==0
+          assert seal['counts']['issues']==0 and seal['package_sha256']==before['package_sha256']
+          assert framework['corpus']=='framework' and framework['framework']['verified'] is True
+          assert project['primary']['artifact_id'] in {'PROJECT_SOURCE_INDEX','PROJECT_CODE_HELLO_CPP'}
+          assert final['verified'] is True and final['counts']['issues']==0
+          assert final['seal']['matches_current'] is True
+          PY
+
+      - name: Commit and publish alpha.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/kairos-publish
+          find . -type d -name '__pycache__' -prune -exec rm -rf {} +
+          rm -rf kairos/kairos_harness/tests/_tmp
+          find . -type f -name '*.pyc' -delete
+          test "$(find . -type f ! -path './.git/*' | wc -l)" -eq 143
+          git diff --check
+          git config user.name "Q86 Release Bot"
+          git config user.email "113774086+Question86@users.noreply.github.com"
+          git add -A
+          git add -f kairos/kairos_harness/kairos/framework.db
+          git diff --cached --check
+          git commit -m "release: KAIROS 0.1.0-alpha.2"
+          git tag -a v0.1.0-alpha.2 -m "KAIROS 0.1.0-alpha.2"
+          git push origin HEAD:main
+          git push origin refs/tags/v0.1.0-alpha.2
+
+      - name: Create GitHub prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd /tmp/kairos-publish
+          git archive --format=zip --prefix=KAIROS-0.1.0-alpha.2/ -o /tmp/KAIROS-0.1.0-alpha.2.zip HEAD
+          cd /tmp
+          sha256sum KAIROS-0.1.0-alpha.2.zip > KAIROS-0.1.0-alpha.2.zip.sha256
+          cd /tmp/kairos-publish
+          gh release create v0.1.0-alpha.2 \
+            /tmp/KAIROS-0.1.0-alpha.2.zip \
+            /tmp/KAIROS-0.1.0-alpha.2.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "KAIROS 0.1.0-alpha.2" \
+            --notes-file docs/RELEASE_NOTES_0.1.0_ALPHA2.md \
+            --prerelease \
+            --verify-tag
