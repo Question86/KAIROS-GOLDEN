@@ -11,6 +11,16 @@ outcomes in `reports/`, causal failures in `bugs/`, implementation maps in `code
 facts in `research/`, tradeoffs in `decisions/`, stable synthesis in `docs/`, and closed
 loop material in `archive/`.
 
+
+## Project initiation authority
+
+For a fresh external project, Human intent comes first. A reviewed
+`kairos-project-kickoff/v1` contract establishes the project goal, milestone, task and
+criteria before compiler discovery. The compiler then owns translation-unit membership;
+KAIROS may not infer project goals from source layout or replace compiler membership with
+filename/build-prose guesses. Static header closure must preserve compiler include-root
+order and fail closed when a dependency cannot be represented without preprocessor guessing.
+
 ## Mandatory context loop
 
 Orient from the current state and operating contract, ask a concrete question, search the
@@ -31,6 +41,12 @@ package supplies no build command, scientific domain, fixture, runner, or result
 
 ## Change discipline
 
-Keep transactions bounded and preserve exact bytes, hashes, mappings, and provenance. After
-any failed command, inspect state before retrying. Do not widen a scope or disable a gate to
-make a refusal disappear. Git and remote publication require an explicit, separate approval.
+Keep transactions bounded and preserve exact bytes, hashes, mappings, topology and provenance.
+Owner-only include-topology changes must update their source-index and affected header-owner
+authority in the same transaction. Added or removed governed local headers require the explicit
+`authority-checkout -> authority-prepare -> authority-verify -> authority-apply` migration path and
+must not be smuggled through an ordinary patch. Translation-unit membership or normalized compiler-
+context changes are refused with `BUILD_AUTHORITY_MIGRATION_REQUIRED` until a project-specific build-
+authority migration can reproduce the real build configuration. The generic migration consumes an
+isolated candidate tree and compiler database; it never guesses or rewrites the project build system. After any failed command, inspect state before retrying. Do not widen a scope or disable a gate to make a refusal disappear. Git and
+remote publication require an explicit, separate approval.

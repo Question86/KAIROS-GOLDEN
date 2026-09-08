@@ -606,15 +606,20 @@ def begin_cli_action(
             f"governed command requires active goal, milestone, task, and criterion; "
             f"missing {', '.join(missing)}"
         )
-        _record_violation(
-            workspace,
-            action_type="MISSING_ACTIVE_SCOPE",
-            command_name=command_name,
-            phase=phase,
-            scope=scope,
-            message=message,
-            details={"missing": missing},
-        )
+        # A source-only or otherwise unmaterialized workspace has no governance
+        # database yet. Failing a misplaced governed command must not create one
+        # merely to record that the command was refused; that would mutate the
+        # very recovery surface the caller still needs to materialize.
+        if database_path(workspace).is_file():
+            _record_violation(
+                workspace,
+                action_type="MISSING_ACTIVE_SCOPE",
+                command_name=command_name,
+                phase=phase,
+                scope=scope,
+                message=message,
+                details={"missing": missing},
+            )
         if mode == "required":
             raise GovernanceError(message)
     paths = _scope_paths(workspace, command_name, arguments)

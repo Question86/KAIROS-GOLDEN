@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
 from .constants import DEFAULT_CANONICAL_FILES, DEFAULT_DOCUMENT_ROOTS, GOAL_SCHEMA_VERSION, RUNTIME_SCHEMA_VERSION
 from .database import KnowledgeDatabase
-from .goals import reconcile_goal_files, sync_goal_files, update_goal_manifest
+from .goals import reconcile_goal_files, sync_goal_files, update_goal_manifest, validate_goal
 from .promoter import promote_many
 from .templates import (
     bug_document,
@@ -205,7 +206,16 @@ def _starter_architecture_document(workspace_id: str) -> str:
     )
 
 
-def _canonical_documents(workspace_id: str, task_id: str) -> dict[str, str]:
+def _canonical_documents(
+    workspace_id: str,
+    task_id: str,
+    *,
+    goal_id: str = "GOAL_KAIROS_001",
+    milestone_id: str = "MILESTONE_KAIROS_01",
+    criterion_ids: list[str] | None = None,
+    task_title: str | None = None,
+    task_objective: str | None = None,
+) -> dict[str, str]:
     task_ref = pointer(
         f"tasks/task_{task_id}.md",
         section="s-objective",
@@ -325,8 +335,8 @@ def _canonical_documents(workspace_id: str, task_id: str) -> dict[str, str]:
             {
                 "id": "s-active-frontier",
                 "title": "ACTIVE GOAL AND FRONTIER",
-                "capsule": "GOAL_KAIROS_001, MILESTONE_KAIROS_01, and TASK_0001 form the prepared active route.",
-                "content": f"- Goal: `GOAL_KAIROS_001`\n- Milestone: `MILESTONE_KAIROS_01`\n- Active task: {task_ref}",
+                "capsule": f"{goal_id}, {milestone_id}, and {task_id} form the prepared active route.",
+                "content": f"- Goal: `{goal_id}`\n- Milestone: `{milestone_id}`\n- Active task: {task_ref}",
             },
             {
                 "id": "s-read-order",
@@ -357,8 +367,8 @@ def _canonical_documents(workspace_id: str, task_id: str) -> dict[str, str]:
             {
                 "id": "s-active-frontier",
                 "title": "ACTIVE FRONTIER",
-                "capsule": "TASK_0001 is active under the first KAIROS milestone and owns the four prepared acceptance criteria.",
-                "content": f"- HIGH — `TASK_0001` — Goal `GOAL_KAIROS_001` — Next: validate runtime and retrieval — {task_ref}",
+                "capsule": f"{task_id} is the prepared active project task.",
+                "content": f"- HIGH — `{task_id}` — Goal `{goal_id}` — {task_title or 'Project initiation'} — {task_ref}",
             },
             {
                 "id": "s-next-action",
@@ -417,8 +427,8 @@ def _canonical_documents(workspace_id: str, task_id: str) -> dict[str, str]:
             {
                 "id": "s-blockers",
                 "title": "FINALIZATION BLOCKERS",
-                "capsule": "Four mandatory goal criteria are open and no success report yet provides their validation evidence.",
-                "content": "Open criteria: `CRIT_KAIROS_001` through `CRIT_KAIROS_004`.",
+                "capsule": f"{len(criterion_ids or [])} mandatory project criterion/criteria are open and lack validated completion evidence.",
+                "content": "Open criteria: " + (", ".join(f"`{value}`" for value in (criterion_ids or [])) or "none declared"),
             },
             {
                 "id": "s-allowed-actions",
@@ -445,13 +455,13 @@ def _canonical_documents(workspace_id: str, task_id: str) -> dict[str, str]:
             {
                 "id": "s-focus",
                 "title": "SESSION FOCUS",
-                "capsule": "Focus on validating the KAIROS runtime against TASK_0001 and its four criteria.",
-                "content": f"Open the task objective and acceptance criteria through {task_ref}.",
+                "capsule": f"Focus on {task_id} and its declared project criteria.",
+                "content": f"Open the task objective and acceptance criteria through {task_ref}." + (f" Objective: {task_objective}" if task_objective else ""),
             },
             {
                 "id": "s-frontier",
                 "title": "EVIDENCE FRONTIER",
-                "capsule": "Runtime, incremental heartbeat, causal retrieval, and fail-closed finalization evidence are still required.",
+                "capsule": "Project evidence is still required for the active task criteria; framework verification does not satisfy project outcomes.",
                 "content": "Do not convert planned behavior into success claims until receipts and test outputs exist.",
             },
             {
@@ -471,6 +481,145 @@ def _canonical_documents(workspace_id: str, task_id: str) -> dict[str, str]:
         "_SESSION.md": session,
     }
 
+
+
+def initialize_project_workspace(
+    workspace: Path,
+    *,
+    workspace_id: str,
+    goal: dict[str, Any],
+    milestone: dict[str, Any],
+    task: dict[str, Any],
+    selected_criteria: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Create a fresh KAIROS workspace directly under a validated project intent.
+
+    This is the project-intake edge: project goals are authoritative before compiler
+    discovery. Compiler evidence is attached to this scope later by ``kickstart init``;
+    the framework's own bootstrap goal is never inserted into a customer project.
+    """
+    workspace = workspace.resolve()
+    if workspace.exists() and any(workspace.iterdir()):
+        raise WorkspaceError(
+            f"target workspace is not empty: {workspace}; project initialization requires a fresh target"
+        )
+    goal = json.loads(json.dumps(goal))
+    task = json.loads(json.dumps(task))
+    goal_id = str(goal["id"])
+    milestone_id = str(milestone["id"])
+    task_id = str(task["id"])
+    criterion_ids = [str(value["id"]) for value in selected_criteria]
+    if not criterion_ids:
+        raise WorkspaceError("project initialization requires at least one active criterion")
+    if not isinstance(goal.get("created_at"), str) or not goal["created_at"].strip():
+        goal["created_at"] = utc_now()
+    validate_goal(goal)
+
+    workspace.mkdir(parents=True, exist_ok=True)
+    for directory in [*DEFAULT_DOCUMENT_ROOTS, "goals", ".kairos/events", ".kairos/receipts", ".kairos/heartbeats"]:
+        (workspace / directory).mkdir(parents=True, exist_ok=True)
+    config = {
+        "schema": "kairos-workspace-config/v1",
+        "workspace_id": workspace_id,
+        "database": ".kairos/kairos.db",
+        "document_roots": DEFAULT_DOCUMENT_ROOTS,
+        "canonical_files": DEFAULT_CANONICAL_FILES,
+        "reconcile_extensions": [".md"],
+        "inspection_root": ".",
+        "imported_workspace_ids": [],
+        "imported_search_contract_policies": {},
+        "fullscan_policy": "recovery_only",
+        "governance_enforcement": "required",
+        "created_at": utc_now(),
+    }
+    atomic_write_json(workspace / ".kairos" / "config.json", config)
+    runtime_state = {
+        "schema": RUNTIME_SCHEMA_VERSION,
+        "sequence": 0,
+        "lifecycle": "READY",
+        "active_goal": goal_id,
+        "active_milestone": milestone_id,
+        "active_task": task_id,
+        "active_criterion": criterion_ids[0],
+        "mode": "work",
+        "context_pressure": 0.0,
+        "unresolved_branches": 1,
+        "contradiction_count": 0,
+        "evidence_gap_count": len(criterion_ids),
+        "pending_promotions": 0,
+        "failed_promotions": 0,
+        "last_promotion_receipt": None,
+        "last_heartbeat_receipt": None,
+        "updated_at": utc_now(),
+    }
+    atomic_write_json(workspace / ".kairos" / "runtime_state.json", runtime_state)
+    current = {
+        "schema": "kairos-current/v1",
+        "state_revision": 1,
+        "lifecycle": "READY",
+        "loop": 1,
+        "active_goal": goal_id,
+        "active_milestone": milestone_id,
+        "active_task": task_id,
+        "active_criterion": criterion_ids[0],
+        "context_frontier": [f"{task_id}#s-objective", f"{task_id}#s-acceptance"],
+        "pending_promotions": 0,
+        "last_promotion_receipt": None,
+        "next_required_read": "NEURAL_CORTEX.md#s-orientation",
+        "updated_at": utc_now(),
+    }
+    atomic_write_json(workspace / "current.json", current)
+    goal_path = workspace / "goals" / f"{goal_id}.json"
+    atomic_write_json(goal_path, goal)
+    task_path = workspace / "tasks" / f"task_{task_id}.md"
+    atomic_write_text(
+        task_path,
+        task_document(
+            task_id=task_id,
+            title=str(task["title"]),
+            objective=str(task["objective"]),
+            workspace_id=workspace_id,
+            goal_id=goal_id,
+            milestone_id=milestone_id,
+            criteria=selected_criteria,
+            loop=1,
+        ),
+    )
+    starter_architecture_path = workspace / "docs" / "KAIROS_STARTER_ARCHITECTURE.md"
+    atomic_write_text(starter_architecture_path, _starter_architecture_document(workspace_id))
+    canonical = _canonical_documents(
+        workspace_id,
+        task_id,
+        goal_id=goal_id,
+        milestone_id=milestone_id,
+        criterion_ids=criterion_ids,
+        task_title=str(task["title"]),
+        task_objective=str(task["objective"]),
+    )
+    for relative, content in canonical.items():
+        atomic_write_text(workspace / relative, content)
+
+    database = KnowledgeDatabase(database_path(workspace))
+    database.initialize()
+    goal_results = sync_goal_files(workspace, database)
+    document_paths = [task_path, starter_architecture_path, *[workspace / name for name in DEFAULT_CANONICAL_FILES]]
+    receipts = promote_many(document_paths, workspace, database, allow_dynamic=True)
+    from .reconcile import reconcile_documents, update_manifest
+
+    update_manifest(workspace, reconcile_documents(workspace), document_paths, updated_at=utc_now())
+    update_goal_manifest(workspace, reconcile_goal_files(workspace), updated_at=utc_now())
+    return {
+        "workspace": str(workspace),
+        "workspace_id": workspace_id,
+        "database": str(database.path),
+        "goals": goal_results,
+        "active_goal": goal_id,
+        "active_milestone": milestone_id,
+        "active_task": task_id,
+        "active_criterion": criterion_ids[0],
+        "promoted": len(receipts),
+        "receipts": [receipt["receipt_id"] for receipt in receipts],
+    }
 
 def initialize_workspace(workspace: Path, *, workspace_id: str = "KAIROS_WORKSPACE") -> dict[str, Any]:
     workspace = workspace.resolve()

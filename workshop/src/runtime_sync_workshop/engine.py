@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import json
 import os
+import re
 import shutil
 import sqlite3
 import sys
@@ -16,6 +17,7 @@ from .blueprint import (
     advance_document_revision,
     cpp_token_signature,
     parse_blueprint,
+    parse_blueprint_text,
     regenerate_mechanical_layers,
     semantic_document_hash,
     verify_ledger,
@@ -26,9 +28,11 @@ from .corpus import (
     GRAPH_PROJECTIONS,
     blueprint_inventory,
     build_corpus_manifest,
+    header_ownership,
     load_config,
     parsed_sections,
     verify_database_projection,
+    verify_project_intake_binding,
 )
 from .scientific import ScientificParityGate, transaction_work_manifest
 from .util import (
@@ -383,6 +387,355 @@ class WorkshopEngine:
                          "changed": work.read_bytes() != baseline.read_bytes()})
         return rows
 
+    def _render_include_ownership_authority(
+        self,
+        source_text: str,
+        owners: dict[str, set[str]],
+        *,
+        updated_at: str,
+    ) -> str:
+        harness = str(self.config.kairos_harness)
+        if harness not in sys.path:
+            sys.path.insert(0, harness)
+        frontmatter = importlib.import_module("kairos.frontmatter")
+        parsed = frontmatter.split_frontmatter(source_text)
+        metadata = dict(parsed.metadata)
+        metadata["revision"] = int(metadata["revision"]) + 1
+        metadata["updated_at"] = updated_at
+        authority = self.config.raw.get("source_authority") or {}
+        section_id = str(authority.get("include_ownership_section_id", ""))
+        if not section_id:
+            raise WorkshopError("AUTHORITY_TOPOLOGY_UNCONFIGURED", "include ownership authority section is not configured")
+        body = parsed.body
+        anchor = f'<a id="{section_id}"></a>'
+        start = body.find(anchor)
+        if start < 0:
+            raise WorkshopError("AUTHORITY_TOPOLOGY_INVALID", f"include ownership section is missing: {section_id}")
+        next_anchor = body.find('<a id="', start + len(anchor))
+        end = len(body) if next_anchor < 0 else next_anchor
+        section = body[start:end]
+        prefix_match = re.match(
+            rf'(?s)(<a id="{re.escape(section_id)}"></a>\n##[^\n]*\n\n> Capsule:[^\n]*\n\n)',
+            section,
+        )
+        if not prefix_match:
+            raise WorkshopError("AUTHORITY_TOPOLOGY_INVALID", "include ownership section lacks the canonical heading/capsule shape")
+        rows = [
+            f"- `{header}` ← " + ", ".join(f"`{owner}`" for owner in sorted(header_owners))
+            for header, header_owners in sorted(owners.items())
+        ] or ["- none"]
+        replacement = prefix_match.group(1) + "\n".join(rows) + "\n\n"
+        updated_body = body[:start] + replacement + body[end:]
+        return frontmatter.render_frontmatter(metadata) + updated_body
+
+    def _render_header_ownership_blueprint(
+        self,
+        source_text: str,
+        owners: set[str],
+        *,
+        updated_at: str,
+        advance_revision: bool,
+        path: Path,
+    ) -> str:
+        document = parse_blueprint_text(path, source_text)
+        span = document.sections.get("s-ownership")
+        if span is None:
+            raise WorkshopError(
+                "AUTHORITY_TOPOLOGY_INVALID",
+                f"header blueprint lacks s-ownership: {path.name}",
+            )
+        section = document.text[span.start:span.end]
+        prefix_match = re.match(
+            r'(?s)(<a id="s-ownership"></a>\n##[^\n]*\n\n> Capsule:[^\n]*\n\n)',
+            section,
+        )
+        if not prefix_match:
+            raise WorkshopError(
+                "AUTHORITY_TOPOLOGY_INVALID",
+                f"header ownership section lacks the canonical heading/capsule shape: {path.name}",
+            )
+        rows = [f"- `{owner}`" for owner in sorted(owners)] or ["- none found in the static include closure"]
+        replacement = prefix_match.group(1) + "\n".join(rows) + "\n\n"
+        text = document.text[:span.start] + replacement + document.text[span.end:]
+        reparsed = parse_blueprint_text(path, text, document.newline)
+        if advance_revision:
+            return advance_document_revision(
+                reparsed,
+                revision=document.revision + 1,
+                updated_at=updated_at,
+            )
+        # A mechanically regenerated selected header already advanced exactly once.
+        # Ownership is another derived section of the same logical change, not a
+        # second document revision. Keep its revision and timestamp unchanged.
+        return text.replace("\n", document.newline) if document.newline != "\n" else text
+
+    def _prepare_topology_authority(
+        self,
+        root: Path,
+        state: dict[str, Any],
+        baseline_manifest: dict[str, Any],
+        *,
+        stage: bool = True,
+    ) -> dict[str, Any] | None:
+        authority = self.config.raw.get("source_authority") or {}
+        if not authority.get("include_ownership_section_id"):
+            state["authority_documents"] = []
+            return None
+        overrides: dict[str, Path] = {}
+        for key in state["sources"]:
+            record = baseline_manifest["records"][key]
+            if record.get("source"):
+                overrides[key] = root / "work" / key
+            if record.get("header"):
+                header_live = Path(str(record["header"]["path"]))
+                header_relative = header_live.resolve().relative_to(self.config.codebase_root).as_posix()
+                overrides[header_relative] = root / "work" / header_relative
+        owners, issues = header_ownership(
+            self.config,
+            baseline_manifest["authority"]["translation_units"],
+            overrides=overrides,
+        )
+        if issues:
+            raise WorkshopError(
+                "AUTHORITY_TOPOLOGY_UNVERIFIED",
+                "transaction work tree has an include graph that cannot be proven",
+                details=issues,
+            )
+        baseline_owners = {
+            str(header): set(value)
+            for header, value in baseline_manifest["authority"].get("include_owners", {}).items()
+        }
+        baseline_headers = set(baseline_owners)
+        current_headers = set(owners)
+        if current_headers != baseline_headers:
+            raise WorkshopError(
+                "AUTHORITY_TOPOLOGY_MIGRATION_REQUIRED",
+                "transaction changes the governed header set; use an explicit authority migration before apply",
+                details={
+                    "added_headers": sorted(current_headers - baseline_headers),
+                    "removed_headers": sorted(baseline_headers - current_headers),
+                },
+            )
+        if owners == baseline_owners:
+            if stage:
+                state["authority_documents"] = []
+                state["topology_blueprints"] = []
+            return None
+        if not stage:
+            return {
+                "baseline_owners": {key: sorted(value) for key, value in sorted(baseline_owners.items())},
+                "work_owners": {key: sorted(value) for key, value in sorted(owners.items())},
+            }
+        changed_header_owners = sorted(
+            header for header in baseline_headers
+            if owners.get(header, set()) != baseline_owners.get(header, set())
+        )
+        topology_blueprints: list[str] = []
+        for header in changed_header_owners:
+            record = baseline_manifest["records"].get(header)
+            if not isinstance(record, dict) or record.get("kind") != "header_only":
+                continue
+            blueprint = record.get("blueprint") or {}
+            name = str(blueprint.get("filename", ""))
+            if not name:
+                raise WorkshopError("AUTHORITY_TOPOLOGY_INVALID", f"header record has no blueprint: {header}")
+            baseline_blueprint = root / "baseline" / "blueprints" / name
+            baseline_managed = root / "baseline" / "managed" / name
+            if not baseline_blueprint.is_file():
+                copy_exact(self.config.blueprint_root / name, baseline_blueprint)
+            if not baseline_managed.is_file():
+                copy_exact(self.config.managed_blueprint_root / name, baseline_managed)
+            work_blueprint = root / "work" / "blueprints" / name
+            work_managed = root / "work" / "managed" / name
+            source_path = work_blueprint if work_blueprint.is_file() else baseline_blueprint
+            source_text = source_path.read_text(encoding="utf-8")
+            baseline_document = parse_blueprint(baseline_blueprint)
+            current_document = parse_blueprint_text(source_path, source_text)
+            already_advanced = current_document.revision == baseline_document.revision + 1
+            if current_document.revision not in {baseline_document.revision, baseline_document.revision + 1}:
+                raise WorkshopError(
+                    "BLUEPRINT_REVISION_INVALID",
+                    f"topology blueprint has unexpected work revision: {name}",
+                )
+            rendered_header = self._render_header_ownership_blueprint(
+                source_text,
+                owners.get(header, set()),
+                updated_at=state["deterministic_updated_at"],
+                advance_revision=not already_advanced,
+                path=source_path,
+            )
+            atomic_write_bytes(work_blueprint, rendered_header.encode("utf-8"))
+            atomic_write_bytes(work_managed, rendered_header.encode("utf-8"))
+            topology_blueprints.append(header)
+        state["topology_blueprints"] = topology_blueprints
+        try:
+            relative = self.config.dataflow_index.resolve().relative_to(self.config.kairos_workspace.resolve()).as_posix()
+        except ValueError as exc:
+            raise WorkshopError(
+                "AUTHORITY_TOPOLOGY_UNCONFIGURED",
+                "include ownership drift requires a KAIROS-managed dataflow index",
+            ) from exc
+        baseline_authority = root / "baseline" / "authority" / relative
+        work_authority = root / "work" / "authority" / relative
+        if not baseline_authority.is_file():
+            copy_exact(self.config.dataflow_index, baseline_authority)
+        rendered = self._render_include_ownership_authority(
+            baseline_authority.read_text(encoding="utf-8"),
+            owners,
+            updated_at=state["deterministic_updated_at"],
+        )
+        atomic_write_bytes(work_authority, rendered.encode("utf-8"))
+        state["authority_documents"] = [relative]
+        return {
+            "document": relative,
+            "baseline_owners": {key: sorted(value) for key, value in sorted(baseline_owners.items())},
+            "work_owners": {key: sorted(value) for key, value in sorted(owners.items())},
+            "updated_header_blueprints": topology_blueprints,
+        }
+
+    @staticmethod
+    def _intake_fact(*, live_path: Path, staged_path: Path) -> dict[str, Any]:
+        raw = staged_path.read_bytes()
+        return {
+            "path": live_path.as_posix(),
+            "sha256": sha256_bytes(raw),
+            "bytes": len(raw),
+        }
+
+    def _stage_project_intake_authority(
+        self,
+        root: Path,
+        state: dict[str, Any],
+        baseline_manifest: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Stage the current project-intake binding for an ordinary transaction.
+
+        A project intake is machine authority, not a one-time historical receipt. When
+        governed source/header bytes or include ownership change, its exact byte facts
+        and ownership claims must advance in the same transaction. Otherwise the
+        package could contain individually hashed files that contradict one another.
+        """
+        live_path = self.config.machine_root / "project-intake.json"
+        if not live_path.is_file():
+            state["machine_authority_files"] = []
+            return None
+        intake = read_json(live_path)
+        if not isinstance(intake, dict) or intake.get("schema") != "kairos-project-intake/v1":
+            raise WorkshopError(
+                "PROJECT_INTAKE_INVALID",
+                "ordinary Workshop synchronization requires a valid project-intake.json when one is present",
+            )
+        candidate = json.loads(json.dumps(intake))
+        changes = {str(row["source"]): row for row in state.get("changes", [])}
+        changed_fields: list[str] = []
+
+        unit_rows = {
+            str(row.get("relative_path", "")).replace("\\", "/"): row
+            for row in candidate.get("translation_units", [])
+            if isinstance(row, dict) and isinstance(row.get("relative_path"), str)
+        }
+        changed_header_paths: set[str] = set()
+        for relative, change in changes.items():
+            record = baseline_manifest["records"].get(relative) or {}
+            if change.get("source_changed") and record.get("source"):
+                row = unit_rows.get(relative)
+                if not isinstance(row, dict):
+                    raise WorkshopError(
+                        "PROJECT_INTAKE_SOURCE_FACT_MISSING",
+                        f"project intake has no translation-unit row for changed source: {relative}",
+                    )
+                row["facts"] = self._intake_fact(
+                    live_path=self.config.codebase_root / relative,
+                    staged_path=root / "work" / relative,
+                )
+                changed_fields.append(f"source:{relative}")
+            if change.get("header_changed") and isinstance(record.get("header"), dict):
+                header_live = Path(str(record["header"]["path"]))
+                header_relative = header_live.resolve().relative_to(self.config.codebase_root.resolve()).as_posix()
+                changed_header_paths.add(header_relative)
+
+        topology = state.get("topology_authority")
+        if isinstance(topology, dict):
+            owners = {
+                str(key): sorted(str(value) for value in values)
+                for key, values in (topology.get("work_owners") or {}).items()
+            }
+        else:
+            owners = {
+                str(key): sorted(str(value) for value in values)
+                for key, values in baseline_manifest["authority"].get("include_owners", {}).items()
+            }
+
+        closure = candidate.get("include_closure")
+        if not isinstance(closure, dict):
+            raise WorkshopError(
+                "PROJECT_INTAKE_INCLUDE_CLOSURE_INVALID",
+                "project intake include_closure must be an object",
+            )
+        for header, header_owners in owners.items():
+            row = closure.get(header)
+            if not isinstance(row, dict):
+                raise WorkshopError(
+                    "PROJECT_INTAKE_HEADER_FACT_MISSING",
+                    f"project intake has no include-closure row for governed header: {header}",
+                )
+            normalized_owners = sorted(header_owners)
+            current_owners = sorted(str(value) for value in row.get("owners", [])) if isinstance(row.get("owners"), list) else []
+            if current_owners != normalized_owners:
+                row["owners"] = normalized_owners
+                changed_fields.append(f"owners:{header}")
+            if header in changed_header_paths:
+                row["facts"] = self._intake_fact(
+                    live_path=self.config.codebase_root / header,
+                    staged_path=root / "work" / header,
+                )
+                changed_fields.append(f"header:{header}")
+
+        if not changed_fields:
+            state["machine_authority_files"] = []
+            return None
+
+        baseline_machine = root / "baseline" / "machine" / "project-intake.json"
+        work_machine = root / "work" / "machine" / "project-intake.json"
+        copy_exact(live_path, baseline_machine)
+        atomic_write_json(work_machine, candidate)
+        state["machine_authority_files"] = ["project-intake.json"]
+
+        prospective_records = json.loads(json.dumps(baseline_manifest["records"]))
+        for relative, change in changes.items():
+            record = prospective_records.get(relative)
+            if not isinstance(record, dict):
+                continue
+            if change.get("source_changed") and record.get("source"):
+                raw = (root / "work" / relative).read_bytes()
+                record["source"]["sha256"] = sha256_bytes(raw)
+                record["source"]["byte_count"] = len(raw)
+            if change.get("header_changed") and isinstance(record.get("header"), dict):
+                header_live = Path(str(record["header"]["path"]))
+                header_relative = header_live.resolve().relative_to(self.config.codebase_root.resolve()).as_posix()
+                raw = (root / "work" / header_relative).read_bytes()
+                record["header"]["sha256"] = sha256_bytes(raw)
+                record["header"]["byte_count"] = len(raw)
+
+        binding_issues = verify_project_intake_binding(
+            self.config,
+            translation_units=baseline_manifest["authority"]["translation_units"],
+            include_owners={key: set(values) for key, values in owners.items()},
+            records=prospective_records,
+            intake_path=work_machine,
+        )
+        if binding_issues:
+            raise WorkshopError(
+                "PROJECT_INTAKE_STAGE_INVALID",
+                "staged project intake does not describe the exact transaction result",
+                details=binding_issues,
+            )
+        return {
+            "path": "project-intake.json",
+            "changed_bindings": sorted(set(changed_fields)),
+            "sha256": sha256_bytes(work_machine.read_bytes()),
+        }
+
     def _review_map(self, root: Path, state: dict[str, Any]) -> dict[str, dict[str, Any]]:
         review = read_json(root / "review" / "metadata_review.json")
         if review.get("schema") != "runtime-sync-metadata-review/v1" or review.get("transaction_id") != state["transaction_id"]:
@@ -505,6 +858,11 @@ class WorkshopEngine:
                 review_blockers.append({"source": row["source"], "reason": "test migration requires explicit updated review"})
             if not any(change["source"] == row["owner"] and change["token_stream_changed"] for change in change_rows):
                 raise WorkshopError("TEST_OWNER_UNCHANGED", "test migration must accompany its changed Runtime interface")
+        # Topology-set changes are a stronger authority boundary than metadata
+        # review. Detect them before asking the operator to repair a review that
+        # cannot make the transaction admissible. Staging happens only after
+        # ordinary review succeeds.
+        self._prepare_topology_authority(root, state, baseline_manifest, stage=False)
         if not any(row["changed"] for row in change_rows):
             raise WorkshopError("TRANSACTION_NO_CHANGES", "prepare found no source, header, or semantic blueprint changes")
         if review_blockers:
@@ -525,11 +883,18 @@ class WorkshopEngine:
             issues = verify_ledger(document, mapped_work_source, work_header)
             if issues:
                 raise WorkshopError("GENERATED_LEDGER_INVALID", f"mechanical ledger postcheck failed for {name}", details=issues)
-        state["state"] = "PREPARED"
         state["changes"] = change_rows
         state["test_changes"] = test_changes
+        topology_authority = self._prepare_topology_authority(root, state, baseline_manifest)
+        state["topology_authority"] = topology_authority
         state["changed_sources"] = [row["source"] for row in change_rows if row["changed"]]
         state["prepared_blueprints"] = [baseline_manifest["records"][source]["blueprint"]["filename"] for source in generated]
+        state["project_intake_authority"] = self._stage_project_intake_authority(
+            root,
+            state,
+            baseline_manifest,
+        )
+        state["state"] = "PREPARED"
         self._save_transaction(root, state, event="PREPARE_COMPLETED", details=change_rows)
         return {"schema": "runtime-sync-prepare/v1", "transaction_id": transaction_id, "state": state["state"], "changes": change_rows}
 
@@ -542,9 +907,41 @@ class WorkshopEngine:
         (shadow / "code").mkdir(parents=True)
         copy_exact(self.config.kairos_workspace / ".kairos" / "config.json", shadow / ".kairos" / "config.json")
         copy_exact(root / "baseline" / "kairos.db", shadow / ".kairos" / "kairos.db")
+        # A native shadow is a document-validation workspace, not merely a code
+        # directory. Changed implementation documents retain typed references to
+        # tasks, method documents, source indexes and other authoritative sources;
+        # those targets must exist in the shadow or a correct first project patch
+        # fails for reasons unrelated to the proposed change. Copy authoritative
+        # source documents only; derived state and receipts remain isolated.
+        workspace_config = read_json(self.config.kairos_workspace / ".kairos" / "config.json")
+        roots = workspace_config.get("document_roots", []) if isinstance(workspace_config, dict) else []
+        for root_name in roots:
+            source_root = self.config.kairos_workspace / str(root_name)
+            if not source_root.is_dir():
+                continue
+            for source_path in source_root.rglob("*"):
+                if source_path.is_file():
+                    relative_path = source_path.relative_to(self.config.kairos_workspace)
+                    copy_exact(source_path, shadow / relative_path)
+        for source_path in (self.config.kairos_workspace / "goals").glob("*.json"):
+            if source_path.is_file():
+                copy_exact(source_path, shadow / source_path.relative_to(self.config.kairos_workspace))
+        for name in workspace_config.get("canonical_files", []) if isinstance(workspace_config, dict) else []:
+            source_path = self.config.kairos_workspace / str(name)
+            if source_path.is_file():
+                copy_exact(source_path, shadow / str(name))
+        current_path = self.config.kairos_workspace / "current.json"
+        if current_path.is_file():
+            copy_exact(current_path, shadow / "current.json")
+        for relative in state.get("authority_documents", []):
+            copy_exact(root / "work" / "authority" / relative, shadow / relative)
         entries: list[CorpusEntry] = []
         for source in state["changed_sources"]:
             name = baseline_manifest["records"][source]["blueprint"]["filename"]
+            work = root / "work" / "blueprints" / name
+            copy_exact(work, shadow / "code" / name)
+        for header in state.get("topology_blueprints", []):
+            name = baseline_manifest["records"][header]["blueprint"]["filename"]
             work = root / "work" / "blueprints" / name
             copy_exact(work, shadow / "code" / name)
         harness = str(self.config.kairos_harness)
@@ -554,6 +951,15 @@ class WorkshopEngine:
         promoter_module = importlib.import_module("kairos.promoter")
         database = database_module.KnowledgeDatabase(shadow / ".kairos" / "kairos.db")
         receipts: list[dict[str, Any]] = []
+        for relative in state.get("authority_documents", []):
+            receipt = promoter_module.promote_document(shadow / relative, shadow, database)
+            if not receipt.get("verified"):
+                raise WorkshopError(
+                    "SHADOW_PROMOTION_FAILED",
+                    f"shadow authority promotion was not verified: {relative}",
+                    details=receipt,
+                )
+            receipts.append(receipt)
         inventory, inventory_issues = blueprint_inventory(self.config)
         if inventory_issues:
             raise WorkshopError("LIVE_INVENTORY_INVALID", "cannot construct shadow entries", details=inventory_issues)
@@ -566,6 +972,21 @@ class WorkshopEngine:
             receipt = promoter_module.promote_document(shadow_entry.managed_path, shadow, database)
             if not receipt.get("verified"):
                 raise WorkshopError("SHADOW_PROMOTION_FAILED", f"shadow promotion was not verified: {name}", details=receipt)
+            receipts.append(receipt)
+            entries.append(shadow_entry)
+        for header in state.get("topology_blueprints", []):
+            name = baseline_manifest["records"][header]["blueprint"]["filename"]
+            shadow_document = parse_blueprint(shadow / "code" / name)
+            live_entry = by_source[header]
+            shadow_entry = replace(
+                live_entry,
+                blueprint_path=shadow / "code" / name,
+                managed_path=shadow / "code" / name,
+                document=shadow_document,
+            )
+            receipt = promoter_module.promote_document(shadow_entry.managed_path, shadow, database)
+            if not receipt.get("verified"):
+                raise WorkshopError("SHADOW_PROMOTION_FAILED", f"shadow topology promotion was not verified: {name}", details=receipt)
             receipts.append(receipt)
             entries.append(shadow_entry)
         summary, issues = verify_database_projection(self.config, entries, database_path=shadow / ".kairos" / "kairos.db")
@@ -641,6 +1062,17 @@ class WorkshopEngine:
             raise WorkshopError("TRANSACTION_STATE_INVALID", f"verify is not allowed from {state['state']}")
         self._assert_live_baseline(state)
         baseline_manifest = read_json(root / "baseline" / "manifest.json")
+        intake_stage = state.get("project_intake_authority")
+        if isinstance(intake_stage, dict):
+            staged_intake = root / "work" / "machine" / str(intake_stage.get("path", ""))
+            if (
+                not staged_intake.is_file()
+                or sha256_bytes(staged_intake.read_bytes()) != str(intake_stage.get("sha256", ""))
+            ):
+                raise WorkshopError(
+                    "PROJECT_INTAKE_CHANGED_AFTER_PREPARE",
+                    "staged project-intake authority changed after prepare",
+                )
         if self._test_changes(root, state, baseline_manifest) != state.get("test_changes", []):
             raise WorkshopError("TEST_CHANGED_AFTER_PREPARE", "test change classification differs from prepared state")
         for source in state["changed_sources"]:
@@ -662,6 +1094,22 @@ class WorkshopEngine:
                 raise WorkshopError("WORK_LEDGER_MISMATCH", f"work ledger differs for {name}", details=ledger_issues)
             if document.revision != record["blueprint"]["revision"] + 1:
                 raise WorkshopError("WORK_REVISION_INVALID", f"revision must be baseline+1 for {name}")
+        for header in state.get("topology_blueprints", []):
+            record = baseline_manifest["records"][header]
+            name = record["blueprint"]["filename"]
+            blueprint = root / "work" / "blueprints" / name
+            managed = root / "work" / "managed" / name
+            if not blueprint.is_file() or not managed.is_file() or blueprint.read_bytes() != managed.read_bytes():
+                raise WorkshopError("WORK_BLUEPRINT_PAIR_MISMATCH", f"topology work external/managed pair differs: {name}")
+            document = parse_blueprint(blueprint)
+            work_header = root / "work" / header
+            if not work_header.is_file():
+                work_header = self.config.codebase_root / header
+            ledger_issues = verify_ledger(document, None, work_header)
+            if ledger_issues:
+                raise WorkshopError("WORK_LEDGER_MISMATCH", f"topology work ledger differs for {name}", details=ledger_issues)
+            if document.revision != record["blueprint"]["revision"] + 1:
+                raise WorkshopError("WORK_REVISION_INVALID", f"topology revision must be baseline+1 for {name}")
         adapter = str(self.config.raw.get("shadow_adapter", "native"))
         shadow = self._shadow_native(root, state, baseline_manifest) if adapter == "native" else self._shadow_fixture(root, state, baseline_manifest)
         work_package = transaction_work_manifest(self.config, root, state)
@@ -834,6 +1282,41 @@ class WorkshopEngine:
                 copy_exact(live, backup)
                 rows.append({"role": "dependent-test", "live": str(live),
                              "backup": str(backup), "sha256": sha256_bytes(live.read_bytes())})
+        for header in state.get("topology_blueprints", []):
+            record = baseline_manifest["records"][header]
+            name = record["blueprint"]["filename"]
+            for role, live in (
+                ("blueprint", self.config.blueprint_root / name),
+                ("managed", self.config.managed_blueprint_root / name),
+            ):
+                key = f"{role}/{sha256_bytes(str(live).encode('utf-8'))[:16]}_{live.name}"
+                backup = root / "rollback" / key
+                copy_exact(live, backup)
+                rows.append({"role": role, "live": str(live), "backup": str(backup), "sha256": sha256_bytes(live.read_bytes())})
+        for relative in state.get("authority_documents", []):
+            live = self.config.kairos_workspace / relative
+            backup = root / "rollback" / "authority" / relative
+            copy_exact(live, backup)
+            rows.append({
+                "role": "authority",
+                "live": str(live),
+                "backup": str(backup),
+                "sha256": sha256_bytes(live.read_bytes()),
+            })
+        for relative in state.get("machine_authority_files", []):
+            live = (self.config.machine_root / relative).resolve()
+            try:
+                live.relative_to(self.config.machine_root.resolve())
+            except ValueError as exc:
+                raise WorkshopError("PATH_ESCAPE", f"machine authority escapes Workshop root: {relative}") from exc
+            backup = root / "rollback" / "machine" / relative
+            copy_exact(live, backup)
+            rows.append({
+                "role": "machine-authority",
+                "live": str(live),
+                "backup": str(backup),
+                "sha256": sha256_bytes(live.read_bytes()),
+            })
         atomic_write_json(root / "rollback" / "targets.json", rows)
         return rows
 
@@ -871,6 +1354,12 @@ class WorkshopEngine:
         scientific_parity = self.scientific_gate.assert_apply_ready(root, state)
         adapter = str(self.config.raw.get("shadow_adapter", "native"))
         changed_managed = [f"code/{baseline_manifest['records'][source]['blueprint']['filename']}" for source in state["changed_sources"]]
+        changed_managed.extend(
+            f"code/{baseline_manifest['records'][header]['blueprint']['filename']}"
+            for header in state.get("topology_blueprints", [])
+        )
+        changed_managed.extend(state.get("authority_documents", []))
+        changed_managed = sorted(set(changed_managed))
         permit: dict[str, Any] | None = None
         if adapter == "native":
             runtime_state_path = self.config.kairos_workspace / ".kairos" / "runtime_state.json"
@@ -907,6 +1396,14 @@ class WorkshopEngine:
             for source in state["changed_sources"]:
                 name = baseline_manifest["records"][source]["blueprint"]["filename"]
                 copy_exact(root / "work" / "managed" / name, self.config.managed_blueprint_root / name)
+            for header in state.get("topology_blueprints", []):
+                name = baseline_manifest["records"][header]["blueprint"]["filename"]
+                copy_exact(root / "work" / "blueprints" / name, self.config.blueprint_root / name)
+                copy_exact(root / "work" / "managed" / name, self.config.managed_blueprint_root / name)
+            for relative in state.get("authority_documents", []):
+                copy_exact(root / "work" / "authority" / relative, self.config.kairos_workspace / relative)
+            for relative in state.get("machine_authority_files", []):
+                copy_exact(root / "work" / "machine" / relative, self.config.machine_root / relative)
             heartbeat_receipt: dict[str, Any]
             for change in state.get("test_changes", []):
                 if change["changed"]:
@@ -940,9 +1437,23 @@ class WorkshopEngine:
                     raise WorkshopError("POSTCHECK_BLUEPRINT_MISMATCH", f"live blueprint differs from work result: {name}")
                 if record["blueprint"]["revision"] != baseline_record["blueprint"]["revision"] + 1:
                     raise WorkshopError("POSTCHECK_REVISION_INVALID", f"live revision did not advance exactly once: {name}")
+            for header in state.get("topology_blueprints", []):
+                record = post["records"][header]
+                baseline_record = baseline_manifest["records"][header]
+                name = record["blueprint"]["filename"]
+                if (self.config.blueprint_root / name).read_bytes() != (root / "work" / "blueprints" / name).read_bytes():
+                    raise WorkshopError("POSTCHECK_BLUEPRINT_MISMATCH", f"live topology blueprint differs from work result: {name}")
+                if record["blueprint"]["revision"] != baseline_record["blueprint"]["revision"] + 1:
+                    raise WorkshopError("POSTCHECK_REVISION_INVALID", f"topology blueprint revision did not advance exactly once: {name}")
             for relative in state.get("dependent_tests", []):
                 if (self.config.codebase_root / relative).read_bytes() != (root / "work" / relative).read_bytes():
                     raise WorkshopError("POSTCHECK_TEST_MISMATCH", f"live test differs from work: {relative}")
+            for relative in state.get("authority_documents", []):
+                if (self.config.kairos_workspace / relative).read_bytes() != (root / "work" / "authority" / relative).read_bytes():
+                    raise WorkshopError("POSTCHECK_AUTHORITY_MISMATCH", f"live authority document differs from work: {relative}")
+            for relative in state.get("machine_authority_files", []):
+                if (self.config.machine_root / relative).read_bytes() != (root / "work" / "machine" / relative).read_bytes():
+                    raise WorkshopError("POSTCHECK_MACHINE_AUTHORITY_MISMATCH", f"live machine authority differs from work: {relative}")
             mirror = self._mirror(post)
             seal = {
                 "schema": "runtime-sync-seal/v1",
@@ -1455,9 +1966,22 @@ class WorkshopEngine:
                 raise WorkshopError("RECOVERY_STILL_BLOCKED", f"live source does not equal transaction result: {source}")
             if (self.config.blueprint_root / name).read_bytes() != (root / "work" / "blueprints" / name).read_bytes():
                 raise WorkshopError("RECOVERY_STILL_BLOCKED", f"live blueprint does not equal transaction result: {name}")
+        for header in state.get("topology_blueprints", []):
+            record = post["records"].get(header)
+            if not record:
+                raise WorkshopError("RECOVERY_STILL_BLOCKED", f"post-recovery topology header is absent: {header}")
+            name = record["blueprint"]["filename"]
+            if (self.config.blueprint_root / name).read_bytes() != (root / "work" / "blueprints" / name).read_bytes():
+                raise WorkshopError("RECOVERY_STILL_BLOCKED", f"live topology blueprint differs from transaction result: {name}")
         for relative in state.get("dependent_tests", []):
             if (self.config.codebase_root / relative).read_bytes() != (root / "work" / relative).read_bytes():
                 raise WorkshopError("RECOVERY_STILL_BLOCKED", f"live test differs from transaction result: {relative}")
+        for relative in state.get("authority_documents", []):
+            if (self.config.kairos_workspace / relative).read_bytes() != (root / "work" / "authority" / relative).read_bytes():
+                raise WorkshopError("RECOVERY_STILL_BLOCKED", f"live authority document differs from transaction result: {relative}")
+        for relative in state.get("machine_authority_files", []):
+            if (self.config.machine_root / relative).read_bytes() != (root / "work" / "machine" / relative).read_bytes():
+                raise WorkshopError("RECOVERY_STILL_BLOCKED", f"live machine authority differs from transaction result: {relative}")
         mirror = self._mirror(post)
         seal = {
             "schema": "runtime-sync-seal/v1",

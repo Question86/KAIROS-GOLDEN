@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import tempfile
 from dataclasses import replace
 from pathlib import Path
@@ -13,7 +14,7 @@ from typing import Any
 from .blueprints import BlueprintSet, filename_for, render_binding_documents, render_blueprints
 from .cmake import CMakeConfigure, configure_compile_commands
 from .errors import KickstartError
-from .survey import HEADER_SUFFIXES, Survey, reject_links, survey_compile_commands
+from .survey import HEADER_SUFFIXES, Survey, compiler_context_sha256, compiler_probe_argv, reject_links, survey_compile_commands
 
 
 def _canonical_root() -> Path:
@@ -30,9 +31,14 @@ def _harness_imports():
     from kairos.heartbeat import run_heartbeat
     from kairos.governance import issue_external_edit_permit
     from kairos.util import atomic_write_json, atomic_write_text, read_json, utc_now
-    from kairos.workspace import database_path, initialize_workspace, load_config
+    from kairos.workspace import database_path, initialize_workspace, initialize_project_workspace, load_config
+    from kairos.loops import validate_project_kickoff_contract
 
-    return health_audit, run_heartbeat, issue_external_edit_permit, atomic_write_json, atomic_write_text, read_json, utc_now, database_path, initialize_workspace, load_config
+    return (
+        health_audit, run_heartbeat, issue_external_edit_permit, atomic_write_json,
+        atomic_write_text, read_json, utc_now, database_path, initialize_workspace,
+        initialize_project_workspace, validate_project_kickoff_contract, load_config,
+    )
 
 
 def _atomic_bytes(path: Path, value: bytes) -> None:
@@ -78,37 +84,142 @@ def _workspace_scope(workspace: Path, load_config, read_json) -> tuple[str, str,
     return workspace_id, goal_id, milestone_id, task_id
 
 
-def _resolve_include_closure(project_root: Path, survey: Survey) -> tuple[dict[str, tuple[Path, list[str]]], list[dict[str, str]]]:
-    """Resolve the same bounded include semantics used by Workshop.
+def _compiler_selected_literal(
+    *,
+    argv: tuple[str, ...],
+    directory: Path,
+    including: Path,
+    opener: str,
+    include: str,
+    project_root: Path,
+) -> tuple[str, Path | None]:
+    """Ask a retained GNU/Clang compiler which literal include it selects.
 
-    Only files inside project_root and configured compiler include roots are
-    eligible. Quoted missing includes are hard failures; unresolved angle
-    includes are treated as external/system dependencies.
+    The probe preprocesses synthetic stdin only. ``-H`` exposes the direct selected
+    dependency without compiling or executing project source.  The including-file
+    directory is represented by a front ``-iquote`` only for quoted includes.
+
+    Returns ``(local|external|missing|unsupported, path)``.
     """
-    import re
+    probe = compiler_probe_argv(argv, directory=directory, project_root=project_root)
+    if not probe:
+        return "unsupported", None
+    language = "c" if including.suffix.casefold() == ".c" else "c++"
+    command = [*probe]
+    if opener == '"':
+        command.extend(("-iquote", str(including.parent)))
+    command.extend(("-H", "-E", "-x", language, "-"))
+    source = f"#include {opener}{include}{'>' if opener == '<' else chr(34)}\n"
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=directory,
+            input=source,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return "unsupported", None
+    selected: Path | None = None
+    for line in completed.stderr.splitlines():
+        match = re.match(r"^\.\s+(.+?)\s*$", line)
+        if not match:
+            continue
+        candidate = Path(match.group(1).strip())
+        try:
+            selected = candidate.resolve(strict=True)
+        except OSError:
+            continue
+        if selected.is_file():
+            break
+    if selected is None:
+        return ("missing", None) if completed.returncode != 0 else ("unsupported", None)
+    try:
+        selected.relative_to(project_root.resolve())
+    except ValueError:
+        return "external", selected
+    return "local", selected
 
-    include_re = re.compile(r"(?m)^\s*#\s*include\s*([<\"])([^>\"]+)[>\"]")
+
+
+def _resolve_include_closure(project_root: Path, survey: Survey) -> tuple[dict[str, tuple[Path, list[str]]], list[dict[str, str]]]:
+    """Resolve a conservative project-local include closure using compiler order.
+
+    Resolution is evaluated per translation unit and per distinct compiler command.
+    Existing external include roots stop lookup at the point where the compiler would
+    have selected them, preventing a later project-local same-named header from being
+    falsely projected. Dynamic/macro includes are refused because this static scanner
+    cannot prove their selected dependency.
+    """
+    include_re = re.compile(r'(?m)^\s*#\s*include\s*([<"])([^>"\n]+)[>"]')
+    any_include_re = re.compile(r'(?m)^\s*#\s*include\s+([^\n]+)')
     root = project_root.resolve()
-    include_roots = tuple(survey.include_roots)
-    queue: list[tuple[Path, str]] = [(unit.absolute_path, unit.relative_path) for unit in survey.units]
-    seen: set[Path] = set()
+    queue: list[tuple[Path, str, Any]] = []
+    for unit in survey.units:
+        for variant in unit.variants:
+            queue.append((unit.absolute_path, unit.relative_path, variant))
+    seen: set[tuple[Path, str, tuple[str, ...]]] = set()
     headers: dict[str, tuple[Path, list[str]]] = {}
     unresolved: list[dict[str, str]] = []
     while queue:
-        path, owner = queue.pop(0)
+        path, owner, variant = queue.pop(0)
         path = path.resolve()
-        if path in seen:
+        visit = (path, owner, variant.argv)
+        if visit in seen:
             continue
-        seen.add(path)
+        seen.add(visit)
         try:
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeError) as exc:
             raise KickstartError("INCLUDE_SCAN_FAILED", f"cannot read include-graph input: {path}") from exc
-        for opener, include in include_re.findall(text):
+
+        literal_spans = {(match.start(), match.group(0)) for match in include_re.finditer(text)}
+        for match in any_include_re.finditer(text):
+            if not any(start_pos == match.start() for start_pos, _ in literal_spans):
+                token = match.group(1).strip()
+                unresolved.append({
+                    "including": path.relative_to(root).as_posix(),
+                    "include": token,
+                    "reason": "dynamic_or_macro_include",
+                })
+
+        for match in include_re.finditer(text):
+            opener, include = match.group(1), match.group(2).strip()
             include_path = Path(include.replace("/", os.sep))
-            candidates = [path.parent / include_path, *(root_dir / include_path for root_dir in include_roots), root / include_path]
-            resolved: Path | None = None
+            # Quoted includes check the including file directory first. Explicit
+            # search roots then follow compiler category order; angle includes
+            # deliberately exclude -iquote roots.
+            search_roots = variant.quote_include_roots if opener == '"' else variant.angle_include_roots
+            candidates: list[Path] = []
+            if opener == '"':
+                candidates.append(path.parent / include_path)
+            candidates.extend(root_dir / include_path for root_dir in search_roots)
+            resolved_local: Path | None = None
+            stopped_external = False
             for candidate in candidates:
+                try:
+                    reject_links(candidate, root, code="LINKED_HEADER_UNSUPPORTED")
+                except KickstartError:
+                    # reject_links also reports outside-root candidates. External
+                    # roots are allowed as compiler evidence, so inspect them
+                    # without weakening project-local link checks.
+                    try:
+                        candidate_abs = candidate.resolve(strict=True)
+                    except OSError:
+                        continue
+                    try:
+                        candidate_abs.relative_to(root)
+                    except ValueError:
+                        if candidate_abs.is_file():
+                            stopped_external = True
+                            break
+                        continue
+                    raise
                 try:
                     candidate_resolved = candidate.resolve(strict=True)
                 except OSError:
@@ -116,21 +227,69 @@ def _resolve_include_closure(project_root: Path, survey: Survey) -> tuple[dict[s
                 try:
                     candidate_resolved.relative_to(root)
                 except ValueError:
+                    if candidate_resolved.is_file():
+                        stopped_external = True
+                        break
                     continue
                 if candidate_resolved.is_file() and candidate_resolved.suffix.casefold() in HEADER_SUFFIXES:
-                    reject_links(candidate_resolved, root, code="LINKED_HEADER_UNSUPPORTED")
-                    resolved = candidate_resolved
+                    resolved_local = candidate_resolved
                     break
-            if resolved is None:
-                if opener == '"':
-                    unresolved.append({"including": path.relative_to(root).as_posix(), "include": include})
+            # -idirafter is searched after compiler implicit system roots. A
+            # project-local candidate there can therefore be shadowed by a
+            # system header with the same spelling. Ask the retained compiler
+            # to select the literal dependency instead of guessing.
+            if resolved_local is not None and any(
+                resolved_local.is_relative_to(after_root) for after_root in variant.idirafter_roots
+            ):
+                status, selected = _compiler_selected_literal(
+                    argv=variant.argv, directory=variant.directory, including=path,
+                    opener=opener, include=include, project_root=root,
+                )
+                if status == "external":
+                    resolved_local = None
+                    stopped_external = True
+                elif status == "local" and selected is not None:
+                    resolved_local = selected
+                elif status in {"unsupported", "missing"}:
+                    unresolved.append({
+                        "including": path.relative_to(root).as_posix(),
+                        "include": include,
+                        "reason": "include_selection_ambiguous",
+                    })
+                    continue
+
+            if resolved_local is None:
+                if opener == '"' and not stopped_external:
+                    status, selected = _compiler_selected_literal(
+                        argv=variant.argv, directory=variant.directory, including=path,
+                        opener=opener, include=include, project_root=root,
+                    )
+                    if status == "external":
+                        stopped_external = True
+                    elif status == "local" and selected is not None:
+                        resolved_local = selected
+                if resolved_local is None:
+                    if opener == '"' and not stopped_external:
+                        unresolved.append({
+                            "including": path.relative_to(root).as_posix(),
+                            "include": include,
+                            "reason": "quoted_include_unresolved",
+                        })
+                    continue
+            if resolved_local.suffix.casefold() not in HEADER_SUFFIXES:
+                unresolved.append({
+                    "including": path.relative_to(root).as_posix(),
+                    "include": include,
+                    "reason": "local_include_suffix_unsupported",
+                    "selected": resolved_local.relative_to(root).as_posix(),
+                })
                 continue
-            relative = resolved.relative_to(root).as_posix()
+            relative = resolved_local.relative_to(root).as_posix()
             if relative not in headers:
-                headers[relative] = (resolved, [])
+                headers[relative] = (resolved_local, [])
             if owner not in headers[relative][1]:
                 headers[relative][1].append(owner)
-            queue.append((resolved, owner))
+            queue.append((resolved_local, owner, variant))
     return headers, unresolved
 
 
@@ -158,6 +317,11 @@ def _manifest(
     retained_compile_commands: Path,
     cmake_configure: CMakeConfigure | None,
     intake_directory: Path,
+    workspace_id: str,
+    goal_id: str,
+    milestone_id: str,
+    task_id: str,
+    project_intent_sha256: str | None,
 ) -> dict[str, Any]:
     def facts(path: Path) -> dict[str, Any]:
         raw = path.read_bytes()
@@ -168,9 +332,17 @@ def _manifest(
         "state": "verified_pending_workshop_audit",
         "project_root": project_root.as_posix(),
         "workspace": workspace.as_posix(),
+        "project_scope": {
+            "workspace_id": workspace_id,
+            "goal_id": goal_id,
+            "milestone_id": milestone_id,
+            "task_id": task_id,
+            "project_intent_sha256": project_intent_sha256,
+        },
         "authority": {
             "kind": survey.source_kind,
             "compile_commands": facts(retained_compile_commands),
+            "compiler_context_sha256": compiler_context_sha256(survey, project_root),
             "cmake_file": facts(cmake_configure.cmake_file) if cmake_configure else None,
             "cmake_build_directory": cmake_configure.build_directory.as_posix() if cmake_configure else None,
         },
@@ -179,6 +351,14 @@ def _manifest(
                 "relative_path": unit.relative_path,
                 "commands": len(unit.commands),
                 "include_roots": [root.as_posix() for root in unit.include_roots],
+                "include_search_variants": [
+                    {
+                        "quote_roots": [root.as_posix() for root in variant.quote_include_roots],
+                        "angle_roots": [root.as_posix() for root in variant.angle_include_roots],
+                        "idirafter_roots": [root.as_posix() for root in variant.idirafter_roots],
+                    }
+                    for variant in unit.variants
+                ],
                 "facts": facts(unit.absolute_path),
             }
             for unit in survey.units
@@ -210,8 +390,13 @@ def initialize_project(
     cmake_executable: str = "cmake",
     build_directory: Path | None = None,
     workspace_id: str | None = None,
+    project_spec: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    health_audit, run_heartbeat, issue_external_edit_permit, atomic_write_json, atomic_write_text, read_json, utc_now, _, initialize_workspace, load_config = _harness_imports()
+    (
+        health_audit, run_heartbeat, issue_external_edit_permit, atomic_write_json,
+        atomic_write_text, read_json, utc_now, _, initialize_workspace,
+        initialize_project_workspace, validate_project_kickoff_contract, load_config,
+    ) = _harness_imports()
     project_root = project_root.resolve()
     if not project_root.is_dir():
         raise KickstartError("PROJECT_ROOT_INVALID", f"project_root is not a directory: {project_root}")
@@ -222,8 +407,48 @@ def initialize_project(
         if workspace.exists() and any(workspace.iterdir()):
             raise KickstartError("WORKSPACE_NOT_FRESH", f"workspace is not a KAIROS workspace and is not empty: {workspace}")
         derived_id = workspace_id or f"KAIROS_PROJECT_{hashlib.sha256(project_root.as_posix().encode('utf-8')).hexdigest()[:12].upper()}"
-        initialize_workspace(workspace, workspace_id=_safe_workspace_id(derived_id))
+        if project_spec is None:
+            raise KickstartError(
+                "PROJECT_INTENT_REQUIRED",
+                "fresh project intake requires a validated kairos-project-kickoff/v1 contract; "
+                "generate one from the human project intent before compiler discovery",
+            )
+        try:
+            goal, milestone, task, selected_criteria, _ = validate_project_kickoff_contract(project_spec)
+        except Exception as exc:
+            raise KickstartError("PROJECT_INTENT_INVALID", str(exc)) from exc
+        initialize_project_workspace(
+            workspace,
+            workspace_id=_safe_workspace_id(derived_id),
+            goal=goal,
+            milestone=milestone,
+            task=task,
+            selected_criteria=selected_criteria,
+        )
+    elif project_spec is not None:
+        # Existing workspaces already own their active authority. A second intent
+        # contract must not silently replace it during source binding.
+        try:
+            goal, milestone, task, _, _ = validate_project_kickoff_contract(project_spec)
+        except Exception as exc:
+            raise KickstartError("PROJECT_INTENT_INVALID", str(exc)) from exc
+        current_existing = read_json(workspace / "current.json", default={}) or {}
+        expected = (str(goal["id"]), str(milestone["id"]), str(task["id"]))
+        actual = (
+            str(current_existing.get("active_goal", "")),
+            str(current_existing.get("active_milestone", "")),
+            str(current_existing.get("active_task", "")),
+        )
+        if expected != actual:
+            raise KickstartError(
+                "PROJECT_INTENT_SCOPE_MISMATCH",
+                f"project intent targets {expected}, but existing workspace authority is {actual}",
+            )
     workspace_id_actual, goal_id, milestone_id, task_id = _workspace_scope(workspace, load_config, read_json)
+    project_intent_sha256 = (
+        _sha256(json.dumps(project_spec, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+        if project_spec is not None else None
+    )
     if workspace_id is not None and _safe_workspace_id(workspace_id) != workspace_id_actual:
         raise KickstartError("WORKSPACE_ID_MISMATCH", f"workspace already declares {workspace_id_actual!r}, not {workspace_id!r}")
 
@@ -259,6 +484,28 @@ def initialize_project(
         survey = replace(survey, compile_commands=retained_compile_commands)
         headers, unresolved = _resolve_include_closure(project_root, survey)
         if unresolved:
+            dynamic = [item for item in unresolved if item.get("reason") == "dynamic_or_macro_include"]
+            if dynamic:
+                raise KickstartError(
+                    "DYNAMIC_INCLUDE_UNSUPPORTED",
+                    "one or more preprocessor-computed includes cannot be proven by the static intake scanner; "
+                    "supply compiler dependency evidence or simplify the include for this intake",
+                    details=dynamic,
+                )
+            ambiguous = [item for item in unresolved if item.get("reason") == "include_selection_ambiguous"]
+            if ambiguous:
+                raise KickstartError(
+                    "INCLUDE_SELECTION_AMBIGUOUS",
+                    "compiler search order can change the selected literal header but no safe compiler probe proved the dependency",
+                    details=ambiguous,
+                )
+            unsupported = [item for item in unresolved if item.get("reason") == "local_include_suffix_unsupported"]
+            if unsupported:
+                raise KickstartError(
+                    "LOCAL_INCLUDE_SUFFIX_UNSUPPORTED",
+                    "a compiler-selected project-local include uses a suffix not representable by the current header authority",
+                    details=unsupported,
+                )
             raise KickstartError(
                 "QUOTED_INCLUDE_UNRESOLVED",
                 "one or more quoted project includes could not be resolved inside project_root",
@@ -310,6 +557,7 @@ def initialize_project(
         config_path = workspace / ".kairos" / "workshop.config.json"
         workshop_config = {
             "schema": "runtime-sync-workshop-config/v1",
+            "compiler_context_sha256": compiler_context_sha256(survey, project_root),
             "codebase_root": project_root.as_posix(),
             "runtime_root": project_root.as_posix(),
             "cmake_file": build_authority.as_posix(),
@@ -322,6 +570,43 @@ def initialize_project(
             "kairos_harness": (_canonical_root() / "kairos" / "kairos_harness").as_posix(),
             "kairos_database": (workspace / ".kairos" / "kairos.db").as_posix(),
             "include_roots": include_roots,
+            "translation_unit_include_roots": {
+                unit.relative_path: [
+                    [root.as_posix() for root in sequence]
+                    for sequence in unit.include_root_sequences
+                ]
+                for unit in survey.units
+            },
+            "translation_unit_include_variants": {
+                unit.relative_path: [
+                    {
+                        "quote_roots": [root.as_posix() for root in variant.quote_include_roots],
+                        "angle_roots": [root.as_posix() for root in variant.angle_include_roots],
+                        "idirafter_roots": [root.as_posix() for root in variant.idirafter_roots],
+                        "compiler_probe": (
+                            {
+                                "argv": list(probe),
+                                "directory": project_root.as_posix(),
+                            }
+                            if (probe := compiler_probe_argv(variant.argv, directory=variant.directory, project_root=project_root))
+                            else None
+                        ),
+                    }
+                    for variant in unit.variants
+                ]
+                for unit in survey.units
+            },
+            "translation_unit_compiler_probes": {
+                unit.relative_path: [
+                    {
+                        "argv": list(probe),
+                        "directory": project_root.as_posix(),
+                    }
+                    for variant in unit.variants
+                    if (probe := compiler_probe_argv(variant.argv, directory=variant.directory, project_root=project_root))
+                ]
+                for unit in survey.units
+            },
             "expected_translation_units": len(survey.units),
             "blueprint_ignore": [],
             "auxiliary_documents": [],
@@ -343,6 +628,7 @@ def initialize_project(
                 "index_membership_token": "yes",
                 "index_prefix_reset_marker": "**End of translation-unit membership",
                 "translation_unit_extensions": ["c", "cc", "cpp", "cxx", "cu"],
+                "include_ownership_section_id": "s-include-closure",
             },
             "state_directory": ".state",
             "transaction_directory": "transactions",
@@ -357,6 +643,11 @@ def initialize_project(
             retained_compile_commands=retained_compile_commands,
             cmake_configure=cmake_configure,
             intake_directory=intake_directory,
+            workspace_id=workspace_id_actual,
+            goal_id=goal_id,
+            milestone_id=milestone_id,
+            task_id=task_id,
+            project_intent_sha256=project_intent_sha256,
         )
         manifest["workshop_config_sha256"] = _sha256(json.dumps(workshop_config, sort_keys=True, separators=(",", ":")).encode("utf-8"))
         atomic_write_json(config_path, workshop_config)

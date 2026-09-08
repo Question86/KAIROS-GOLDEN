@@ -266,6 +266,17 @@ def _kickoff_contract(
     return goal, milestone, task, selected_criteria, canonical_spec
 
 
+def validate_project_kickoff_contract(
+    spec: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], list[dict[str, Any]], str]:
+    """Validate and normalize a project-intent contract without mutating a workspace.
+
+    Project initiation and later loop kickoff deliberately share one contract grammar so
+    the LLM cannot invent a second goal/milestone/task schema for compiler-backed intake.
+    """
+    return _kickoff_contract(spec)
+
+
 def _stage_kickoff_source(path: Path, content: str, expected_sha256: str) -> bool:
     if path.exists():
         if not path.is_file() or sha256_bytes(path.read_bytes()) != expected_sha256:

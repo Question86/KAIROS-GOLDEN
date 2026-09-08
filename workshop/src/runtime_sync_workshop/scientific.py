@@ -55,6 +55,27 @@ def transaction_work_manifest(config: WorkshopConfig, root: Path, state: dict[st
                 "sha256": sha256_bytes(raw),
                 "size": len(raw),
             }
+    for header in state.get("topology_blueprints", []):
+        record = baseline_manifest.get("records", {}).get(header)
+        if not isinstance(record, dict):
+            raise WorkshopError("WORK_SCOPE_INVALID", f"topology header is absent from its baseline: {header}")
+        blueprint = record.get("blueprint") or {}
+        name = str(blueprint.get("filename", ""))
+        if not name:
+            raise WorkshopError("WORK_SCOPE_INVALID", f"topology header blueprint mapping is invalid: {header}")
+        for role, relative, path in (
+            ("topology-blueprint", f"blueprints/{name}", root / "work" / "blueprints" / name),
+            ("topology-managed", f"managed/{name}", root / "work" / "managed" / name),
+        ):
+            if not path.is_file():
+                raise WorkshopError("WORK_FILE_MISSING", f"topology blueprint work file is missing: {path}")
+            raw = path.read_bytes()
+            rows[f"{role}:{relative}"] = {
+                "role": role,
+                "path": relative,
+                "sha256": sha256_bytes(raw),
+                "size": len(raw),
+            }
     for relative in state.get("dependent_tests", []):
         path = root / "work" / str(relative)
         if not path.is_file():
@@ -62,6 +83,28 @@ def transaction_work_manifest(config: WorkshopConfig, root: Path, state: dict[st
         raw = path.read_bytes()
         rows[f"dependent-test:{relative}"] = {
             "role": "dependent-test",
+            "path": str(relative),
+            "sha256": sha256_bytes(raw),
+            "size": len(raw),
+        }
+    for relative in state.get("authority_documents", []):
+        path = root / "work" / "authority" / str(relative)
+        if not path.is_file():
+            raise WorkshopError("WORK_FILE_MISSING", f"authority document work file is missing: {path}")
+        raw = path.read_bytes()
+        rows[f"authority:{relative}"] = {
+            "role": "authority",
+            "path": str(relative),
+            "sha256": sha256_bytes(raw),
+            "size": len(raw),
+        }
+    for relative in state.get("machine_authority_files", []):
+        path = root / "work" / "machine" / str(relative)
+        if not path.is_file():
+            raise WorkshopError("WORK_FILE_MISSING", f"machine authority work file is missing: {path}")
+        raw = path.read_bytes()
+        rows[f"machine-authority:{relative}"] = {
+            "role": "machine-authority",
             "path": str(relative),
             "sha256": sha256_bytes(raw),
             "size": len(raw),

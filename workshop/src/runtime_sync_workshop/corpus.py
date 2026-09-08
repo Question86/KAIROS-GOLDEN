@@ -4,6 +4,7 @@ import json
 import re
 import stat
 import sqlite3
+import subprocess
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Iterable
@@ -515,14 +516,26 @@ def blueprint_inventory(config: WorkshopConfig) -> tuple[list[CorpusEntry], list
 
 
 def _resolve_include(config: WorkshopConfig, including: Path, include: str) -> Path | None:
-    include_path = Path(include.replace("/", "\\"))
+    """Compatibility resolver for legacy bootstrap/repair inspection.
+
+    Normal corpus authority uses :func:`header_ownership`, which preserves per-TU
+    compiler include ordering and external stop points. Bootstrap repair predates that
+    owner-aware interface and only needs a bounded local target lookup; keep this helper
+    project-local and deterministic instead of reviving the old platform-specific path
+    rewrite.
+    """
+    include_path = Path(str(include).replace("\\", "/"))
     candidates = [including.parent / include_path]
     candidates.extend(root / include_path for root in config.include_roots)
     candidates.append(config.codebase_root / include_path)
+    codebase = config.codebase_root.resolve()
     for candidate in candidates:
-        resolved = candidate.resolve()
         try:
-            resolved.relative_to(config.codebase_root)
+            resolved = candidate.resolve(strict=True)
+        except OSError:
+            continue
+        try:
+            resolved.relative_to(codebase)
         except ValueError:
             continue
         if resolved.is_file():
@@ -530,42 +543,392 @@ def _resolve_include(config: WorkshopConfig, including: Path, include: str) -> P
     return None
 
 
-def header_closure(config: WorkshopConfig, translation_units: Iterable[str]) -> tuple[set[str], list[dict[str, Any]]]:
-    queue = [(config.codebase_root / relative).resolve() for relative in translation_units]
-    seen: set[Path] = set()
-    headers: set[str] = set()
-    issues: list[dict[str, Any]] = []
-    while queue:
-        path = queue.pop(0)
-        if path in seen:
+def _translation_unit_include_sequences(config: WorkshopConfig, source_relative: str) -> tuple[tuple[Path, ...], ...]:
+    """Legacy flat include-root representation retained for older workspaces."""
+    mapping = config.raw.get("translation_unit_include_roots", {})
+    if isinstance(mapping, dict) and source_relative in mapping:
+        raw_sequences = mapping[source_relative]
+        if not isinstance(raw_sequences, list) or any(not isinstance(item, list) for item in raw_sequences):
+            raise WorkshopError(
+                "CONFIG_INVALID",
+                f"translation_unit_include_roots entry must be an array of arrays: {source_relative}",
+            )
+        sequences: list[tuple[Path, ...]] = []
+        for item in raw_sequences:
+            roots: list[Path] = []
+            for value in item:
+                if not isinstance(value, str) or not value.strip():
+                    raise WorkshopError(
+                        "CONFIG_INVALID",
+                        f"translation_unit_include_roots contains a non-path value: {source_relative}",
+                    )
+                roots.append(Path(value).resolve())
+            sequence = tuple(roots)
+            if sequence not in sequences:
+                sequences.append(sequence)
+        return tuple(sequences or [tuple()])
+    return (tuple(config.include_roots),)
+
+
+def _translation_unit_compiler_probes(
+    config: WorkshopConfig, source_relative: str
+) -> tuple[tuple[tuple[str, ...], Path], ...]:
+    mapping = config.raw.get("translation_unit_compiler_probes", {})
+    if not isinstance(mapping, dict) or source_relative not in mapping:
+        return tuple()
+    raw_probes = mapping[source_relative]
+    if not isinstance(raw_probes, list):
+        raise WorkshopError(
+            "CONFIG_INVALID",
+            f"translation_unit_compiler_probes entry must be an array: {source_relative}",
+        )
+    probes: list[tuple[tuple[str, ...], Path]] = []
+    for item in raw_probes:
+        if not isinstance(item, dict):
+            raise WorkshopError(
+                "CONFIG_INVALID",
+                f"translation_unit_compiler_probes contains a non-object: {source_relative}",
+            )
+        argv = item.get("argv")
+        directory = item.get("directory")
+        if (
+            not isinstance(argv, list)
+            or not argv
+            or any(not isinstance(value, str) or not value for value in argv)
+            or not isinstance(directory, str)
+            or not directory.strip()
+        ):
+            raise WorkshopError(
+                "CONFIG_INVALID",
+                f"invalid compiler probe declaration: {source_relative}",
+            )
+        probe = (tuple(argv), Path(directory).resolve())
+        if probe not in probes:
+            probes.append(probe)
+    return tuple(probes)
+
+
+def _translation_unit_include_variants(config: WorkshopConfig, source_relative: str) -> tuple[dict[str, Any], ...]:
+    """Return per-compiler-command include semantics without cross-mixing variants."""
+    mapping = config.raw.get("translation_unit_include_variants", {})
+    if isinstance(mapping, dict) and source_relative in mapping:
+        raw_variants = mapping[source_relative]
+        if not isinstance(raw_variants, list) or not raw_variants:
+            raise WorkshopError(
+                "CONFIG_INVALID",
+                f"translation_unit_include_variants must be a non-empty array: {source_relative}",
+            )
+        variants: list[dict[str, Any]] = []
+        for item in raw_variants:
+            if not isinstance(item, dict):
+                raise WorkshopError(
+                    "CONFIG_INVALID",
+                    f"translation_unit_include_variants contains a non-object: {source_relative}",
+                )
+            parsed: dict[str, Any] = {}
+            for key in ("quote_roots", "angle_roots", "idirafter_roots"):
+                raw_roots = item.get(key, [])
+                if not isinstance(raw_roots, list) or any(not isinstance(value, str) or not value for value in raw_roots):
+                    raise WorkshopError("CONFIG_INVALID", f"invalid {key} for {source_relative}")
+                parsed[key] = tuple(Path(value).resolve() for value in raw_roots)
+            raw_probe = item.get("compiler_probe")
+            if raw_probe is None:
+                parsed["compiler_probe"] = None
+            else:
+                if not isinstance(raw_probe, dict):
+                    raise WorkshopError("CONFIG_INVALID", f"invalid compiler_probe for {source_relative}")
+                argv = raw_probe.get("argv")
+                directory = raw_probe.get("directory")
+                if (
+                    not isinstance(argv, list) or not argv
+                    or any(not isinstance(value, str) or not value for value in argv)
+                    or not isinstance(directory, str) or not directory.strip()
+                ):
+                    raise WorkshopError("CONFIG_INVALID", f"invalid compiler_probe for {source_relative}")
+                parsed["compiler_probe"] = (tuple(argv), Path(directory).resolve())
+            if parsed not in variants:
+                variants.append(parsed)
+        return tuple(variants)
+
+    # Backwards compatibility for workspaces created before per-variant search
+    # categories were persisted. Pair by ordinal where possible and otherwise
+    # keep the root sequence conservative; this path must not invent -iquote or
+    # -idirafter semantics that were not recorded.
+    sequences = _translation_unit_include_sequences(config, source_relative)
+    probes = _translation_unit_compiler_probes(config, source_relative)
+    count = max(len(sequences), len(probes), 1)
+    result: list[dict[str, Any]] = []
+    for index in range(count):
+        roots = sequences[index] if index < len(sequences) else sequences[-1]
+        probe = probes[index] if index < len(probes) else None
+        row = {
+            "quote_roots": roots,
+            "angle_roots": roots,
+            "idirafter_roots": tuple(),
+            "compiler_probe": probe,
+        }
+        if row not in result:
+            result.append(row)
+    return tuple(result)
+
+
+def _compiler_selected_literal(
+    config: WorkshopConfig,
+    *,
+    variant: dict[str, Any],
+    owner: str,
+    including: Path,
+    opener: str,
+    include: str,
+) -> tuple[str, Path | None]:
+    """Use retained GNU/Clang search evidence to identify one literal dependency."""
+    probe = variant.get("compiler_probe")
+    if not probe:
+        return "unsupported", None
+    argv, directory = probe
+    cwd = directory if directory.is_dir() else config.codebase_root
+    language = "c" if Path(owner).suffix.lower() == ".c" else "c++"
+    command = [*argv]
+    if opener == '"':
+        command.extend(("-iquote", str(including.parent)))
+    command.extend(("-H", "-E", "-x", language, "-"))
+    source = f"#include {opener}{include}{'>' if opener == '<' else chr(34)}\n"
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=cwd,
+            input=source,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return "unsupported", None
+    selected: Path | None = None
+    for line in completed.stderr.splitlines():
+        match = re.match(r"^\.\s+(.+?)\s*$", line)
+        if not match:
             continue
-        seen.add(path)
-        if not path.is_file():
-            issues.append({"code": "INCLUDE_SCAN_INPUT_MISSING", "message": f"include-graph input is missing: {path}"})
+        candidate = Path(match.group(1).strip())
+        try:
+            selected = candidate.resolve(strict=True)
+        except OSError:
+            continue
+        if selected.is_file():
+            break
+    if selected is None:
+        return ("missing", None) if completed.returncode != 0 else ("unsupported", None)
+    try:
+        selected.relative_to(config.codebase_root.resolve())
+    except ValueError:
+        return "external", selected
+    return "local", selected
+
+
+def _compiler_resolves_external_literal(
+    config: WorkshopConfig,
+    *,
+    owner: str,
+    including: Path,
+    include: str,
+) -> bool:
+    """Compatibility wrapper for older tests/callers."""
+    for variant in _translation_unit_include_variants(config, owner):
+        status, _ = _compiler_selected_literal(
+            config, variant=variant, owner=owner, including=including,
+            opener='"', include=include,
+        )
+        if status == "external":
+            return True
+    return False
+
+
+def header_ownership(
+    config: WorkshopConfig,
+    translation_units: Iterable[str],
+    *,
+    overrides: dict[str, Path] | None = None,
+) -> tuple[dict[str, set[str]], list[dict[str, Any]]]:
+    """Return local header -> translation-unit owners under compiler-order semantics.
+
+    Kickstart-generated configurations retain ordered include-root sequences per
+    translation unit. Existing external include roots act as stop points so a later
+    local same-named header is not falsely projected. The optional overrides map lets
+    a Workshop transaction evaluate its work tree without mutating the live project.
+    """
+    overrides = overrides or {}
+    literal_re = re.compile(r'(?m)^\s*#\s*include\s*([<"])([^>"\n]+)[>"]')
+    any_re = re.compile(r'(?m)^\s*#\s*include\s+([^\n]+)')
+    codebase = config.codebase_root.resolve()
+    queue: list[tuple[Path, str, dict[str, Any]]] = []
+    for relative in translation_units:
+        logical = (codebase / relative).resolve()
+        for variant in _translation_unit_include_variants(config, relative):
+            queue.append((logical, relative, variant))
+    seen: set[tuple[Path, str, tuple[Path, ...], tuple[Path, ...], Any]] = set()
+    owners: dict[str, set[str]] = {}
+    issues: list[dict[str, Any]] = []
+
+    def read_path(logical: Path) -> Path:
+        try:
+            relative = logical.resolve().relative_to(codebase).as_posix()
+        except ValueError:
+            return logical
+        return overrides.get(relative, logical)
+
+    while queue:
+        logical_path, owner, variant = queue.pop(0)
+        visit = (
+            logical_path.resolve(), owner, variant["quote_roots"],
+            variant["angle_roots"], variant.get("compiler_probe"),
+        )
+        if visit in seen:
+            continue
+        seen.add(visit)
+        physical = read_path(logical_path)
+        if not physical.is_file():
+            issues.append({
+                "code": "INCLUDE_SCAN_INPUT_MISSING",
+                "message": f"include-graph input is missing: {physical}",
+                "details": {"logical": relative_posix(logical_path, codebase), "owner": owner},
+            })
             continue
         try:
-            text = path.read_text(encoding="utf-8")
+            text = physical.read_text(encoding="utf-8")
         except UnicodeError as exc:
-            issues.append({"code": "INCLUDE_SCAN_NON_UTF8", "message": f"cannot scan includes in {path}: {exc}"})
+            issues.append({
+                "code": "INCLUDE_SCAN_NON_UTF8",
+                "message": f"cannot scan includes in {physical}: {exc}",
+                "details": {"logical": relative_posix(logical_path, codebase), "owner": owner},
+            })
             continue
-        for include in INCLUDE_RE.findall(text):
-            resolved = _resolve_include(config, path, include)
-            if resolved is None:
-                governed = _governed_include_prefix()
-                if governed is not None and include.replace("\\", "/").startswith(governed):
+        literal_starts = {match.start() for match in literal_re.finditer(text)}
+        for match in any_re.finditer(text):
+            if match.start() not in literal_starts:
+                issues.append({
+                    "code": "DYNAMIC_INCLUDE_UNSUPPORTED",
+                    "message": "preprocessor-computed include cannot be proven by the configured static dependency authority",
+                    "details": {
+                        "including": relative_posix(logical_path, codebase),
+                        "owner": owner,
+                        "include": match.group(1).strip(),
+                    },
+                })
+        for match in literal_re.finditer(text):
+            opener, include = match.group(1), match.group(2).strip()
+            include_path = Path(include.replace("\\", "/"))
+            search_roots = variant["quote_roots"] if opener == '"' else variant["angle_roots"]
+            candidates: list[Path] = []
+            if opener == '"':
+                candidates.append(logical_path.parent / include_path)
+            candidates.extend(root / include_path for root in search_roots)
+            selected_local: Path | None = None
+            selected_external = False
+            for candidate in candidates:
+                try:
+                    resolved = candidate.resolve(strict=True)
+                except OSError:
+                    continue
+                if not resolved.is_file():
+                    continue
+                try:
+                    resolved.relative_to(codebase)
+                except ValueError:
+                    selected_external = True
+                    break
+                if resolved.suffix.lower() in config.header_extensions:
+                    selected_local = resolved
+                    break
+            if selected_local is not None and any(
+                selected_local.is_relative_to(root) for root in variant["idirafter_roots"]
+            ):
+                status, compiler_selected = _compiler_selected_literal(
+                    config, variant=variant, owner=owner, including=logical_path,
+                    opener=opener, include=include,
+                )
+                if status == "external":
+                    selected_local = None
+                    selected_external = True
+                elif status == "local" and compiler_selected is not None:
+                    selected_local = compiler_selected
+                else:
                     issues.append({
-                        "code": "RUNTIME_INCLUDE_UNRESOLVED",
-                        "message": f"runtime include cannot be resolved: {include}",
-                        "details": {"including": relative_posix(path, config.codebase_root)},
+                        "code": "INCLUDE_SELECTION_AMBIGUOUS",
+                        "message": f"cannot prove compiler selection for -idirafter include: {include}",
+                        "details": {"including": relative_posix(logical_path, codebase), "owner": owner},
                     })
+                    continue
+
+            if selected_local is None:
+                if opener == '"' and not selected_external:
+                    status, compiler_selected = _compiler_selected_literal(
+                        config, variant=variant, owner=owner, including=logical_path,
+                        opener=opener, include=include,
+                    )
+                    if status == "external":
+                        selected_external = True
+                    elif status == "local" and compiler_selected is not None:
+                        selected_local = compiler_selected
+                if selected_local is None:
+                    if opener == '"' and not selected_external:
+                        issues.append({
+                            "code": "RUNTIME_INCLUDE_UNRESOLVED",
+                            "message": f"quoted project include cannot be resolved: {include}",
+                            "details": {"including": relative_posix(logical_path, codebase), "owner": owner},
+                        })
+                    continue
+            if selected_local.suffix.lower() not in config.header_extensions:
+                issues.append({
+                    "code": "LOCAL_INCLUDE_SUFFIX_UNSUPPORTED",
+                    "message": f"project-local compiler-selected include has unsupported suffix: {include}",
+                    "details": {
+                        "including": relative_posix(logical_path, codebase),
+                        "owner": owner,
+                        "selected": relative_posix(selected_local, codebase),
+                    },
+                })
                 continue
-            if resolved.suffix.lower() not in config.header_extensions:
-                continue
-            relative = relative_posix(resolved, config.codebase_root)
-            if relative not in headers:
-                headers.add(relative)
-                queue.append(resolved)
-    return headers, issues
+            relative = relative_posix(selected_local, codebase)
+            owners.setdefault(relative, set()).add(owner)
+            queue.append((selected_local, owner, variant))
+    return owners, issues
+
+
+def header_closure(config: WorkshopConfig, translation_units: Iterable[str]) -> tuple[set[str], list[dict[str, Any]]]:
+    ownership, issues = header_ownership(config, translation_units)
+    return set(ownership), issues
+
+
+def declared_header_ownership(config: WorkshopConfig) -> dict[str, set[str]] | None:
+    authority = config.raw.get("source_authority") or {}
+    section_id = authority.get("include_ownership_section_id")
+    if not isinstance(section_id, str) or not section_id:
+        return None
+    text = normalized_text(config.dataflow_index.read_text(encoding="utf-8"))
+    marker = f'<a id="{section_id}"></a>'
+    start = text.find(marker)
+    if start < 0:
+        raise WorkshopError(
+            "DATAFLOW_INCLUDE_SECTION_MISSING",
+            f"configured include-ownership section is missing: {section_id}",
+        )
+    next_anchor = text.find('<a id="', start + len(marker))
+    section = text[start:] if next_anchor < 0 else text[start:next_anchor]
+    result: dict[str, set[str]] = {}
+    row_re = re.compile(r'^-\s+`(?P<header>[^`]+)`\s+←\s+(?P<owners>.+)$')
+    owner_re = re.compile(r'`([^`]+)`')
+    for line in section.splitlines():
+        match = row_re.match(line.strip())
+        if not match:
+            continue
+        result[match.group("header").replace("\\", "/")] = {
+            value.replace("\\", "/") for value in owner_re.findall(match.group("owners"))
+        }
+    return result
 
 
 def _section_capsule(content: str) -> str:
@@ -619,6 +982,272 @@ def _graph_cell(column: str, raw: Any) -> Any:
     if isinstance(raw, str):
         return raw
     return json.dumps(raw, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def verify_project_intake_binding(
+    config: WorkshopConfig,
+    *,
+    translation_units: Iterable[str],
+    include_owners: dict[str, set[str]],
+    records: dict[str, Any],
+    intake_path: Path | None = None,
+    compile_commands_path: Path | None = None,
+) -> list[dict[str, Any]]:
+    """Verify the retained project-intake claims against the current sealed corpus.
+
+    The intake manifest and Workshop config are both machine authority files. Merely
+    hashing both into one package is not enough: stale cross-references must fail closed
+    rather than become two independently authentic but contradictory facts.
+    """
+    intake_path = (intake_path or (config.machine_root / "project-intake.json")).resolve()
+    if not intake_path.is_file():
+        return []
+    issues: list[dict[str, Any]] = []
+    try:
+        intake = read_json(intake_path)
+    except Exception as exc:
+        return [{
+            "code": "PROJECT_INTAKE_INVALID",
+            "message": f"cannot read project intake authority: {exc}",
+        }]
+    if not isinstance(intake, dict) or intake.get("schema") != "kairos-project-intake/v1":
+        return [{
+            "code": "PROJECT_INTAKE_INVALID",
+            "message": "project-intake.json has an unsupported schema",
+        }]
+
+    declared_project_root = str(intake.get("project_root", ""))
+    declared_workspace = str(intake.get("workspace", ""))
+    if Path(declared_project_root).resolve() != config.codebase_root.resolve():
+        issues.append({
+            "code": "PROJECT_INTAKE_PROJECT_ROOT_MISMATCH",
+            "message": "project intake root differs from the configured codebase root",
+            "details": {"declared": declared_project_root, "configured": config.codebase_root.as_posix()},
+        })
+    if Path(declared_workspace).resolve() != config.kairos_workspace.resolve():
+        issues.append({
+            "code": "PROJECT_INTAKE_WORKSPACE_MISMATCH",
+            "message": "project intake workspace differs from the configured KAIROS workspace",
+            "details": {"declared": declared_workspace, "configured": config.kairos_workspace.as_posix()},
+        })
+
+    declared_config_hash = str(intake.get("workshop_config_sha256", "")).lower()
+    actual_config_hash = package_hash(config.raw).lower()
+    if declared_config_hash != actual_config_hash:
+        issues.append({
+            "code": "PROJECT_INTAKE_CONFIG_HASH_MISMATCH",
+            "message": "project intake does not bind the current Workshop configuration",
+            "details": {"declared": declared_config_hash, "actual": actual_config_hash},
+        })
+
+    authority = intake.get("authority") or {}
+    declared_compiler_context = (
+        str(authority.get("compiler_context_sha256", "")).lower()
+        if isinstance(authority, dict)
+        else ""
+    )
+    configured_compiler_context = str(config.raw.get("compiler_context_sha256", "")).lower()
+    if not configured_compiler_context:
+        issues.append({
+            "code": "PROJECT_INTAKE_COMPILER_CONTEXT_CONFIG_MISSING",
+            "message": "Workshop config does not retain the compiler-context identity bound by project intake",
+        })
+    elif declared_compiler_context != configured_compiler_context:
+        issues.append({
+            "code": "PROJECT_INTAKE_COMPILER_CONTEXT_MISMATCH",
+            "message": "project intake compiler-context identity differs from Workshop configuration",
+            "details": {
+                "declared": declared_compiler_context,
+                "configured": configured_compiler_context,
+            },
+        })
+    compile_record = authority.get("compile_commands") if isinstance(authority, dict) else None
+    compile_path = (
+        compile_commands_path
+        or (config.machine_root / "project-intake" / "compile_commands.json")
+    ).resolve()
+    if not isinstance(compile_record, dict) or not compile_path.is_file():
+        issues.append({
+            "code": "PROJECT_INTAKE_COMPILE_AUTHORITY_MISSING",
+            "message": "project intake compile_commands authority is missing",
+        })
+    else:
+        raw = compile_path.read_bytes()
+        actual_sha = sha256_bytes(raw).lower()
+        actual_bytes = len(raw)
+        declared_compile_path = str(compile_record.get("path", ""))
+        if Path(declared_compile_path).resolve() != compile_path:
+            issues.append({
+                "code": "PROJECT_INTAKE_COMPILE_PATH_MISMATCH",
+                "message": "project intake compile_commands path differs from retained machine authority",
+                "details": {"declared": declared_compile_path, "actual": compile_path.as_posix()},
+            })
+        if str(compile_record.get("sha256", "")).lower() != actual_sha or int(compile_record.get("bytes", -1)) != actual_bytes:
+            issues.append({
+                "code": "PROJECT_INTAKE_COMPILE_HASH_MISMATCH",
+                "message": "retained compile_commands bytes differ from project-intake authority",
+                "details": {
+                    "declared_sha256": compile_record.get("sha256"),
+                    "actual_sha256": actual_sha,
+                    "declared_bytes": compile_record.get("bytes"),
+                    "actual_bytes": actual_bytes,
+                },
+            })
+
+    declared_units = intake.get("translation_units")
+    unit_rows: dict[str, dict[str, Any]] = {}
+    if not isinstance(declared_units, list):
+        issues.append({"code": "PROJECT_INTAKE_SOURCE_SET_INVALID", "message": "project intake translation_units must be an array"})
+    else:
+        for item in declared_units:
+            if not isinstance(item, dict) or not isinstance(item.get("relative_path"), str):
+                issues.append({"code": "PROJECT_INTAKE_SOURCE_SET_INVALID", "message": "project intake contains an invalid translation-unit row"})
+                continue
+            relative = item["relative_path"].replace("\\", "/")
+            if relative in unit_rows:
+                issues.append({"code": "PROJECT_INTAKE_SOURCE_DUPLICATE", "message": f"duplicate project-intake translation unit: {relative}"})
+            unit_rows[relative] = item
+    expected_units = set(str(value).replace("\\", "/") for value in translation_units)
+    if set(unit_rows) != expected_units:
+        issues.append({
+            "code": "PROJECT_INTAKE_SOURCE_SET_MISMATCH",
+            "message": "project-intake translation-unit membership differs from Workshop authority",
+            "details": {
+                "intake_only": sorted(set(unit_rows) - expected_units),
+                "workshop_only": sorted(expected_units - set(unit_rows)),
+            },
+        })
+    for relative in sorted(expected_units & set(unit_rows)):
+        record = records.get(relative) or {}
+        actual = record.get("source") if isinstance(record, dict) else None
+        declared = unit_rows[relative].get("facts")
+        if not isinstance(actual, dict) or not isinstance(declared, dict):
+            issues.append({"code": "PROJECT_INTAKE_SOURCE_FACT_MISSING", "message": f"source facts missing for {relative}"})
+            continue
+        declared_source_path = str(declared.get("path", ""))
+        expected_source_path = (config.codebase_root / relative).resolve()
+        if Path(declared_source_path).resolve() != expected_source_path:
+            issues.append({
+                "code": "PROJECT_INTAKE_SOURCE_PATH_MISMATCH",
+                "message": f"project-intake source path differs for {relative}",
+            })
+        if str(declared.get("sha256", "")).lower() != str(actual.get("sha256", "")).lower() or int(declared.get("bytes", -1)) != int(actual.get("byte_count", -2)):
+            issues.append({
+                "code": "PROJECT_INTAKE_SOURCE_FACT_MISMATCH",
+                "message": f"project-intake source fact differs for {relative}",
+            })
+
+        configured_sequences = (config.raw.get("translation_unit_include_roots") or {}).get(relative, [])
+        configured_roots = sorted({
+            str(value)
+            for sequence in configured_sequences
+            if isinstance(sequence, list)
+            for value in sequence
+            if isinstance(value, str)
+        })
+        declared_roots = sorted(str(value) for value in unit_rows[relative].get("include_roots", []))
+        if declared_roots != configured_roots:
+            issues.append({
+                "code": "PROJECT_INTAKE_TU_INCLUDE_ROOT_MISMATCH",
+                "message": f"project-intake include roots differ for {relative}",
+                "details": {"declared": declared_roots, "configured": configured_roots},
+            })
+
+        configured_variant_map = config.raw.get("translation_unit_include_variants") or {}
+        if isinstance(configured_variant_map, dict) and relative in configured_variant_map:
+            configured_variants = configured_variant_map.get(relative)
+            declared_variants = unit_rows[relative].get("include_search_variants")
+            if not isinstance(configured_variants, list) or not isinstance(declared_variants, list):
+                issues.append({
+                    "code": "PROJECT_INTAKE_INCLUDE_VARIANT_INVALID",
+                    "message": f"project-intake/config include variants are not arrays for {relative}",
+                })
+            else:
+                def roots_only(rows: list[Any]) -> list[dict[str, list[str]]]:
+                    result: list[dict[str, list[str]]] = []
+                    for row in rows:
+                        if not isinstance(row, dict):
+                            return []
+                        result.append({
+                            key: [str(value) for value in row.get(key, [])]
+                            for key in ("quote_roots", "angle_roots", "idirafter_roots")
+                        })
+                    return result
+                if roots_only(configured_variants) != roots_only(declared_variants):
+                    issues.append({
+                        "code": "PROJECT_INTAKE_INCLUDE_VARIANT_MISMATCH",
+                        "message": f"project-intake include search semantics differ for {relative}",
+                    })
+
+    declared_include_roots = sorted(str(value) for value in intake.get("include_roots", []))
+    configured_include_roots = sorted(path.as_posix() for path in config.include_roots)
+    if declared_include_roots != configured_include_roots:
+        issues.append({
+            "code": "PROJECT_INTAKE_INCLUDE_ROOT_MISMATCH",
+            "message": "project-intake global include roots differ from Workshop configuration",
+            "details": {"declared": declared_include_roots, "configured": configured_include_roots},
+        })
+
+    declared_closure = intake.get("include_closure")
+    if not isinstance(declared_closure, dict):
+        issues.append({"code": "PROJECT_INTAKE_INCLUDE_CLOSURE_INVALID", "message": "project intake include_closure must be an object"})
+        declared_closure = {}
+    actual_headers = set(include_owners)
+    if set(declared_closure) != actual_headers:
+        issues.append({
+            "code": "PROJECT_INTAKE_INCLUDE_SET_MISMATCH",
+            "message": "project-intake include closure differs from Workshop include authority",
+            "details": {
+                "intake_only": sorted(set(declared_closure) - actual_headers),
+                "workshop_only": sorted(actual_headers - set(declared_closure)),
+            },
+        })
+    for relative in sorted(actual_headers & set(declared_closure)):
+        row = declared_closure[relative]
+        record = records.get(relative) or {}
+        actual = record.get("header") if isinstance(record, dict) else None
+        if not isinstance(row, dict) or not isinstance(actual, dict):
+            issues.append({"code": "PROJECT_INTAKE_HEADER_FACT_MISSING", "message": f"header facts missing for {relative}"})
+            continue
+        declared_owners = sorted(str(value) for value in row.get("owners", [])) if isinstance(row.get("owners"), list) else []
+        if declared_owners != sorted(include_owners.get(relative, set())):
+            issues.append({"code": "PROJECT_INTAKE_HEADER_OWNER_MISMATCH", "message": f"project-intake header owners differ for {relative}"})
+        facts = row.get("facts")
+        if isinstance(facts, dict):
+            declared_header_path = str(facts.get("path", ""))
+            expected_header_path = (config.codebase_root / relative).resolve()
+            if Path(declared_header_path).resolve() != expected_header_path:
+                issues.append({
+                    "code": "PROJECT_INTAKE_HEADER_PATH_MISMATCH",
+                    "message": f"project-intake header path differs for {relative}",
+                })
+        if not isinstance(facts, dict) or str(facts.get("sha256", "")).lower() != str(actual.get("sha256", "")).lower() or int((facts or {}).get("bytes", -1)) != int(actual.get("byte_count", -2)):
+            issues.append({"code": "PROJECT_INTAKE_HEADER_FACT_MISMATCH", "message": f"project-intake header fact differs for {relative}"})
+
+    declared_blueprints = intake.get("blueprints")
+    blueprint_rows: dict[str, tuple[str, str, str]] = {}
+    if isinstance(declared_blueprints, list):
+        for item in declared_blueprints:
+            if isinstance(item, dict) and isinstance(item.get("relative_path"), str):
+                blueprint_rows[item["relative_path"].replace("\\", "/")] = (
+                    str(item.get("filename", "")),
+                    str(item.get("kind", "")),
+                    str(item.get("artifact_id", "")),
+                )
+    expected_blueprints = {
+        relative: (
+            str(record.get("blueprint", {}).get("filename", "")),
+            str(record.get("kind", "")),
+            str(record.get("blueprint", {}).get("artifact_id", "")),
+        )
+        for relative, record in records.items()
+    }
+    if blueprint_rows != expected_blueprints:
+        issues.append({
+            "code": "PROJECT_INTAKE_BLUEPRINT_MISMATCH",
+            "message": "project-intake blueprint inventory differs from active Workshop records",
+        })
+    return issues
 
 
 def verify_database_projection(config: WorkshopConfig, entries: Iterable[CorpusEntry], *, database_path: Path | None = None) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -746,8 +1375,25 @@ def build_corpus_manifest(config: WorkshopConfig, *, verify_database: bool = Tru
             "message": "blueprint mappings do not exactly cover DATAFLOW_INDEX membership",
             "details": {"blueprint_only": sorted(blueprint_sources - set(dataflow)), "dataflow_without_blueprint": sorted(set(dataflow) - blueprint_sources)},
         })
-    include_headers, include_issues = header_closure(config, dataflow)
+    include_owners, include_issues = header_ownership(config, dataflow)
+    include_headers = set(include_owners)
     issues.extend(include_issues)
+    declared_owners = declared_header_ownership(config)
+    if declared_owners is not None:
+        normalized_actual = {key: set(value) for key, value in include_owners.items()}
+        if normalized_actual != declared_owners:
+            all_headers = sorted(set(normalized_actual) | set(declared_owners))
+            details = []
+            for header in all_headers:
+                actual = sorted(normalized_actual.get(header, set()))
+                declared = sorted(declared_owners.get(header, set()))
+                if actual != declared:
+                    details.append({"header": header, "declared": declared, "actual": actual})
+            issues.append({
+                "code": "INCLUDE_OWNERSHIP_MISMATCH",
+                "message": "PROJECT_SOURCE_INDEX include ownership differs from the current compiler-scoped include graph",
+                "details": details,
+            })
     paired_headers = {entry.header_relative for entry in entries if entry.header_relative}
     entries_by_name = {entry.blueprint_path.name: entry for entry in entries}
     for header, owner in sorted(config.additional_header_owners.items()):
@@ -829,6 +1475,9 @@ def build_corpus_manifest(config: WorkshopConfig, *, verify_database: bool = Tru
             },
         }
         valid_entries.append(entry)
+    issues.extend(verify_project_intake_binding(
+        config, translation_units=dataflow, include_owners=include_owners, records=records
+    ))
     database_summary: dict[str, Any] = {}
     if verify_database:
         try:
@@ -848,6 +1497,7 @@ def build_corpus_manifest(config: WorkshopConfig, *, verify_database: bool = Tru
         "dataflow_sha256": sha256_bytes(config.dataflow_index.read_bytes()),
         "translation_units": dataflow,
         "include_headers": sorted(include_headers),
+        "include_owners": {key: sorted(value) for key, value in sorted(include_owners.items())},
         "paired_headers": sorted(paired_headers),
         "additional_header_owners": dict(sorted(config.additional_header_owners.items())),
         "header_only_blueprints": dict(sorted(config.header_only_blueprints.items())),

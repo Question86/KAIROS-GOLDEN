@@ -1,11 +1,31 @@
 # Project kickstart and ground-truth binding
 
-The canonical framework is intentionally unbound. A project becomes a KAIROS
-corpus only through the compiler-backed initiation command:
+The canonical framework is intentionally unbound. A real project is created in two ordered
+steps: first establish Human project intent, then bind compiler-observed implementation
+reality under that exact goal/milestone/task scope.
+
+## 1. Project intent precedes code discovery
+
+Generate the LLM prompt from the Human project outcome:
 
 ```powershell
-python -m kickstart init --project-root <project> --workspace <fresh-kairos-workspace> --compile-commands <build>/compile_commands.json
-python -m kickstart init --project-root <project> --workspace <fresh-kairos-workspace> --cmake <project>/CMakeLists.txt
+python -m kickstart prompt --idea "Describe the intended project outcome"
+```
+
+The LLM returns one reviewed `kairos-project-kickoff/v1` contract containing a unique
+`GOAL_*`, one initial `MILESTONE_*`, one `TASK_*`, and measurable `CRIT_*` entries. The
+contract describes desired outcomes. It must not infer project architecture from code that
+has not yet been surveyed.
+
+A fresh compiler intake refuses to run without this contract. An already initialized KAIROS
+workspace may omit it only when its active goal/milestone/task scope already exists; if a
+contract is supplied there, its identifiers must exactly match that active authority.
+
+## 2. Compiler-backed implementation binding
+
+```powershell
+python -m kickstart init --project-root <project> --workspace <fresh-kairos-workspace> --spec-file project-spec.json --compile-commands <build>/compile_commands.json
+python -m kickstart init --project-root <project> --workspace <fresh-kairos-workspace> --spec-file project-spec.json --cmake <project>/CMakeLists.txt
 ```
 
 The command never edits the project source tree. It writes only the selected KAIROS
@@ -14,36 +34,114 @@ Markdown mirrors.
 
 ## Ground-truth contract
 
-`compile_commands.json` is the primary source-set authority because it is emitted by
-the compiler build graph. With `--cmake`, KAIROS executes an isolated CMake configure
-with `CMAKE_EXPORT_COMPILE_COMMANDS=ON` and then validates the emitted records. The
-framework does not parse a binary, match object-file stems, or regex-search arbitrary
-CMake prose as a source-set claim. A binary-only input is therefore refused unless a
-future project-specific debug/symbol adapter supplies an independently verifiable
-source mapping.
+`compile_commands.json` is the primary translation-unit membership authority because it is
+emitted by the compiler build graph. With `--cmake`, KAIROS executes an isolated CMake
+configure with `CMAKE_EXPORT_COMPILE_COMMANDS=ON` and validates the emitted records. The
+framework does not parse a binary, match object-file stems, or regex-search arbitrary CMake
+prose as a source-set claim. Binary-only input is refused unless a future project-specific
+debug/symbol adapter supplies an independently verifiable source mapping.
 
-Each recorded translation unit is checked for an existing project-local C/C++ path,
-UTF-8 bytes, supported suffix, a normalized relative identity and non-linked path
-components. Compiler include
-roots are retained; local quoted and angle-bracket headers are resolved through those
-roots and the including file's directory. Unresolved quoted includes, path escapes,
-unsupported suffixes and ledger-unrepresentable names fail closed.
+Each compiler-recorded translation unit must be an existing project-local C/C++/CUDA path
+with UTF-8 bytes, supported suffix, normalized relative identity and no symlink/reparse
+components. Distinct compile records for one translation unit are retained rather than
+collapsed into an invented include order.
+
+For the initial static include closure, KAIROS preserves include-root order per distinct
+compiler command. Quoted includes check the including file's directory first; compiler
+include roots are then examined in their recorded order. An existing external include root
+acts as a stop point: KAIROS does not skip an external match and then falsely select a later
+same-named project header. Transitive headers retain every translation-unit owner that
+reaches them.
+
+The static scanner intentionally does not guess preprocessor-computed includes such as
+`#include SOME_MACRO`. Such a project fails intake with `DYNAMIC_INCLUDE_UNSUPPORTED`
+unless a future compiler dependency adapter supplies the selected dependency. Unresolved
+quoted project includes, path escapes, unsupported suffixes and ledger-unrepresentable
+names also fail closed.
+
+This is a conservative static local include authority, not a claim that KAIROS reimplements
+the complete C/C++ preprocessor. The translation-unit set is compiler-produced; literal
+header closure is compiler-context-guided and deliberately bounded.
 
 ## Materialized evidence
 
-- `code/PROJECT_CODE_<digest>.md`: one `kairos-context/v1` code document per compiler-recorded translation unit, with exact mapping facts, raw/logical hashes and a verbatim `C:` ledger.
-- `code/PROJECT_HEADER_<digest>.md`: one header-only code document per local header in the static compiled include closure, with an explicit empty source ledger and verbatim `H:` ledger.
-- `docs/PROJECT_SOURCE_INDEX.md`: compiler membership and include-closure index in the Workshop DATAFLOW format, also promoted as a KAIROS document.
-- `docs/PROJECT_KICKSTART.md`: the project-scoped procedure and evidence boundary.
-- `.kairos/project-intake/compile_commands.json`: retained compiler input; `.kairos/project-intake/PROJECT_BUILD_AUTHORITY.cmake` is a derived Workshop parser input.
-- `.kairos/workshop.config.json`: project-bound Workshop configuration; `.kairos/project-intake.json` records hashes, identities and the bounded initiation result.
+- `goals/<GOAL>.json` and `tasks/task_<TASK>.md`: the reviewed Human project intent and active work scope, created before source discovery.
+- `code/PROJECT_CODE_<digest>.md`: one `kairos-context/v1` document per compiler-recorded translation unit, with exact mapping facts, raw/logical hashes and verbatim `C:` ledger.
+- `code/PROJECT_HEADER_<digest>.md`: one header-only code document per project-local header in the admitted static include closure, with explicit empty source ledger and verbatim `H:` ledger.
+- `docs/PROJECT_SOURCE_INDEX.md`: compiler membership plus current header-owner closure in Workshop authority format, promoted as a KAIROS document.
+- `docs/PROJECT_KICKSTART.md`: project-scoped procedure and evidence boundary.
+- `.kairos/project-intake/compile_commands.json`: retained compiler input; `.kairos/project-intake/PROJECT_BUILD_AUTHORITY.cmake` is the derived Workshop membership input.
+- `.kairos/workshop.config.json`: project-bound Workshop configuration, including per-translation-unit include-root sequences.
+- `.kairos/project-intake.json`: hashes, active project scope, optional project-intent hash, translation units, header closure and bounded intake result.
 
-All Markdown is promoted through one KAIROS heartbeat. Promotion is the only operation
-that writes the database projection. The command then verifies CMake membership,
-DATAFLOW membership, blueprint/managed byte parity, exact ledgers, include coverage,
-database projections and the KAIROS health audit. A failure leaves the evidence for
-diagnosis but does not mark the project corpus verified.
+All generated Markdown is promoted through one KAIROS heartbeat. Promotion is the only
+operation that writes the database projection. Intake then verifies build membership,
+DATAFLOW membership, blueprint/managed byte parity, exact ledgers, header closure and owner
+mapping, database projections and KAIROS health. A failure leaves evidence for diagnosis
+but does not mark the project corpus verified.
 
-The resulting workspace is ready for the separate Workshop lifecycle (`status`,
-`seal`, `checkout`, `prepare`, `verify`, `apply`). Initiation itself does not authorize
-live Runtime edits and does not claim a successful build or runtime result.
+## Handoff to synchronized development
+
+A verified intake may enter the separate Workshop lifecycle:
+
+```text
+status -> seal -> checkout -> edit transaction work tree -> metadata review
+       -> prepare -> verify -> apply -> postcheck/reseal
+```
+
+The first real Workshop patch is part of the portability contract: the native shadow carries
+the authoritative KAIROS reference targets required by the changed code documents, so an
+otherwise correct first patch does not fail merely because its task/method/source-index
+references were omitted from the shadow.
+
+Owner-only include-topology changes among an unchanged governed header set are updated in
+`PROJECT_SOURCE_INDEX.md` inside the same Workshop transaction and promoted with the code
+document. A change that adds or removes a governed local header is a stronger authority migration
+and must use the explicit `authority-*` transaction described below; the normal transaction does
+not silently grow or shrink the mapped corpus.
+
+Initiation and Workshop verification establish source/document/database synchronization.
+They do not by themselves prove a successful application build, runtime result, scientific
+correctness, product release or customer acceptance unless a separately configured adapter
+supplies that authority.
+
+## Continuing after the first baseline
+
+Ordinary code/header edits that keep compiler membership and the governed header set stable use
+the normal Workshop transaction. Include-owner changes among already governed headers are derived
+inside that same transaction and update both `PROJECT_SOURCE_INDEX.md` and affected header
+`COMPILED OWNERS` sections before shadow verification.
+
+A structural candidate that changes the governed local-header set while compiler translation-unit
+membership and normalized compiler context remain unchanged uses an isolated candidate tree:
+
+```powershell
+python -m runtime_sync_workshop --config <workspace>/.kairos/workshop.config.json authority-checkout `
+  --candidate-root <isolated-candidate> `
+  --compile-commands <candidate-build>/compile_commands.json `
+  --purpose "Describe the structural authority change"
+python -m runtime_sync_workshop --config <workspace>/.kairos/workshop.config.json authority-prepare TXN_<id>
+python -m runtime_sync_workshop --config <workspace>/.kairos/workshop.config.json authority-verify TXN_<id>
+python -m runtime_sync_workshop --config <workspace>/.kairos/workshop.config.json authority-apply TXN_<id>
+```
+
+The checkout copies compiler-recorded translation units and the admitted local include closure into
+transaction staging. It classifies header additions/removals and exact content changes. Review is
+explicit: changed existing files use `updated`/`none`, new headers use `created`, and removed headers
+use `removed`. Removed managed header documents become `state = "superseded"` historical evidence;
+they are not silently erased from KAIROS knowledge.
+
+`authority-verify` builds a candidate KAIROS database and Workshop corpus entirely from staged
+code/documents/machine authority. Only a verified candidate may reach `authority-apply`, which
+backs up affected live paths, applies the admitted topology, runs one governed heartbeat and full
+health/corpus postcheck, then reseals. A pre-heartbeat failure rolls back; a failure after the
+heartbeat boundary retains the lease as `RECOVERY_REQUIRED`.
+
+### Build-system claim boundary
+
+The generic authority migration deliberately refuses translation-unit membership or normalized
+compiler-context changes with `BUILD_AUTHORITY_MIGRATION_REQUIRED`. A candidate compiler database
+can prove what was presented to KAIROS, but it cannot make the live project's CMake/Meson/Bazel or
+other build authority agree by itself. Such changes require a separately implemented, project-bound
+build-authority migration that can update and reproduce the real build configuration. The generic
+path therefore handles header-topology changes only while compiler membership/context remain stable.

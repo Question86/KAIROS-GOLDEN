@@ -9,6 +9,7 @@ from typing import Any
 from .corpus import build_corpus_manifest
 from .auxiliary import AuxiliaryDocumentTransaction
 from .engine import WorkshopEngine
+from .migration import AuthorityMigration
 from .repair import BootstrapRepair
 from .util import WorkshopError
 
@@ -104,6 +105,23 @@ def _parser() -> argparse.ArgumentParser:
         command = sub.add_parser(name, help=help_text)
         command.add_argument("transaction_id")
 
+    authority_checkout = sub.add_parser(
+        "authority-checkout",
+        help="stage an explicit compiler-backed add/remove/rename authority migration from an isolated candidate tree",
+    )
+    authority_checkout.add_argument("--candidate-root", required=True)
+    authority_checkout.add_argument("--compile-commands", required=True)
+    authority_checkout.add_argument("--purpose", required=True)
+    for name, help_text in (
+        ("authority-prepare", "prepare reviewed candidate code/document/build authority"),
+        ("authority-verify", "verify the candidate authority in an isolated KAIROS/Workshop shadow"),
+        ("authority-apply", "atomically apply the verified authority migration and reseal"),
+        ("authority-abort", "abort a pre-apply authority migration while live bytes remain sealed"),
+        ("authority-transaction", "show one authority migration state and journal"),
+    ):
+        command = sub.add_parser(name, help=help_text)
+        command.add_argument("transaction_id")
+
     sub.add_parser("acl-plan", help="show the OS boundary required to make workshop-only writes enforceable")
     return parser
 
@@ -138,6 +156,7 @@ def execute(arguments: argparse.Namespace) -> dict[str, Any]:
     engine = WorkshopEngine(Path(arguments.config))
     bootstrap = BootstrapRepair(engine)
     auxiliary = AuxiliaryDocumentTransaction(engine)
+    authority = AuthorityMigration(engine)
     command = arguments.command
     if command == "status":
         return engine.status()
@@ -208,6 +227,22 @@ def execute(arguments: argparse.Namespace) -> dict[str, Any]:
         return auxiliary.abort(arguments.transaction_id)
     if command == "auxiliary-transaction":
         return auxiliary.transaction_status(arguments.transaction_id)
+    if command == "authority-checkout":
+        return authority.checkout(
+            candidate_root=Path(arguments.candidate_root),
+            compile_commands=Path(arguments.compile_commands),
+            purpose=arguments.purpose,
+        )
+    if command == "authority-prepare":
+        return authority.prepare(arguments.transaction_id)
+    if command == "authority-verify":
+        return authority.verify(arguments.transaction_id)
+    if command == "authority-apply":
+        return authority.apply(arguments.transaction_id)
+    if command == "authority-abort":
+        return authority.abort(arguments.transaction_id)
+    if command == "authority-transaction":
+        return authority.transaction_status(arguments.transaction_id)
     if command == "acl-plan":
         return _acl_plan(engine)
     raise WorkshopError("COMMAND_UNKNOWN", f"unsupported command: {command}")

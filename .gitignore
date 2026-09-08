@@ -6,6 +6,11 @@ workspace/.kairos/*.db
 workspace/.kairos/*.db-wal
 workspace/.kairos/*.db-shm
 workspace/.kairos/runtime_state.json
+workspace/.kairos/canonical_projection.json
+workspace/.kairos/goal_manifest.json
+workspace/.kairos/manifest.json
+workspace/.kairos/workspace.lock
+workspace/.kairos/heartbeats/
 workspace/.kairos/events/
 workspace/.kairos/receipts/
 workspace/.kairos/locks/
