@@ -6,7 +6,7 @@ import hashlib
 from pathlib import Path
 
 FILES = tuple(f"complete/part-{i:02d}.b64" for i in range(7))
-COMPRESSED_SHA256 = "a995c62731d751f8c7190d5096d17c9df9d14824ca3ad24f546ad8c609cd93eb"
+COMPRESSED_SHA256 = "dba411efa6b896eada1289e13db475072c63334a776c9bf95b0074f676c9cc85"
 PATCH_SHA256 = "f2454f25435e068d92469545142c93a781efb041064516e28b489a9a41f59e4d"
 
 
