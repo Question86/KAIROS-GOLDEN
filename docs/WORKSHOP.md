@@ -2,16 +2,16 @@
 schema = "kairos-context/v1"
 id = "KAIROS_WORKSHOP"
 type = "documentation"
-revision = 1
+revision = 2
 state = "active"
 authority = "operating_contract"
 workspace = "KAIROS_FRAMEWORK"
 route = "KAIROS_FRAMEWORK/KAIROS_WORKSHOP"
-updated_at = "2026-09-08T10:30:00Z"
-capsule = "Authoritative synchronized-change lifecycle for governed code/headers, metadata, shadow verification, postcheck and authority migration."
+updated_at = "2026-09-09T08:45:00Z"
+capsule = "Authoritative synchronized-change lifecycle for universal governed source, C-family headers, source-set changes, metadata, shadow verification, postcheck and authority migration."
 claim_boundary = "This framework source owns the procedure and rules it states; it does not prove live project state, project outcomes, or facts outside its declared scope."
 entities = ["KAIROS", "KAIROS_WORKSHOP"]
-facets = ["workshop", "transaction", "topology", "authority-migration"]
+facets = ["workshop", "transaction", "source-set", "topology", "authority-migration"]
 criteria = []
 does_not_answer = ["live project state", "project-specific execution outcome"]
 
@@ -35,6 +35,11 @@ intent = "migration"
 question = "When is authority migration required?"
 target = "s-authority-migration"
 
+[[answers]]
+intent = "source_set"
+question = "How do I create delete or rename governed source files after seal?"
+target = "s-universal-source-set-mutation"
+
 [[search_contract]]
 query = "How do I modify governed code through the KAIROS Workshop?"
 expected = "KAIROS_WORKSHOP#s-overview"
@@ -55,7 +60,8 @@ required_top_k = 1
 
 The Workshop is a fail-closed synchronizer for a separately configured codebase, its
 implementation documents and its KAIROS projection. It is shipped unbound and becomes
-project-specific only through compiler-backed intake.
+project-specific through universal intake. Static ecosystems carry bounded source membership;
+C/C++/CUDA retains compiler-backed translation-unit/header authority.
 
 The authority chain is: project goal/task scope, compiler-recorded translation-unit
 membership, exact source/header mappings and ledgers, compiler-order static include closure,
@@ -70,10 +76,10 @@ status -> seal -> checkout -> metadata review -> prepare -> verify -> apply
 ```
 
 Work is edited only under the transaction `work/` tree. `prepare` regenerates mechanical
-hash/ledger layers and requires semantic document review whenever the C/C++ token stream
-changes. Mutable file facts have one mechanical owner: generated SOURCE MAPPING/ledger
-layers. Project intake does not duplicate those changing hashes in an independently stale
-semantic section.
+hash/ledger layers. C-family retains its token-stream review rule; static universal ecosystems do
+not acquire fake C++ token semantics and advance their exact mechanical mirrors on byte changes.
+Mutable file facts have one mechanical owner: generated SOURCE MAPPING/ledger layers. Project
+intake does not duplicate those changing hashes in an independently stale semantic section.
 
 `verify` promotes the prepared documents into an isolated native KAIROS shadow. The shadow
 contains the authoritative task, method, source-index and other source documents referenced
@@ -105,6 +111,28 @@ with `AUTHORITY_TOPOLOGY_MIGRATION_REQUIRED`. Changing the governed local-header
 explicit authority-migration lifecycle below. Translation-unit membership or normalized compiler-
 context changes are stronger still and are refused by the generic migration with
 `BUILD_AUTHORITY_MIGRATION_REQUIRED`.
+
+<a id="s-universal-source-set-mutation"></a>
+## Universal static source-set mutation
+
+> Capsule: Create, delete and rename of static-ecosystem source files are Workshop-owned candidate transactions; the live project is unchanged until shadow-verified apply.
+
+Python/JavaScript/TypeScript/Rust/Go/JVM/.NET/Ruby/PHP source-set changes use:
+
+```text
+source-set-checkout -> edit isolated candidate -> source-set-prepare -> source-set-verify -> source-set-apply
+```
+
+`source-set-checkout` copies the sealed governed project into Workshop transaction staging. The
+agent creates/deletes/renames/edits only inside that candidate. `source-set-prepare` recomputes the
+bounded static source membership and generated Markdown/machine authority. `source-set-verify`
+builds and verifies the candidate KAIROS/Workshop corpus in isolation. `source-set-apply` is the only
+step allowed to alter live source membership; it advances source files, active/tombstoned Markdown,
+machine authority, database projection and seal together, ending at `POSTCHECK_VERIFIED`.
+
+The generic source-set transaction fails closed if build/config authority changes or C-family source/
+header topology changes. Those transitions use stronger authority paths; the static source-set path
+never rewrites build configuration or weakens compiler-backed C-family evidence.
 
 <a id="s-authority-migration"></a>
 ## Authority migration

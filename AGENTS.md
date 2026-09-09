@@ -2,12 +2,12 @@
 schema = "kairos-context/v1"
 id = "KAIROS_FRAMEWORK_RULES"
 type = "documentation"
-revision = 1
+revision = 2
 state = "active"
 authority = "operating_contract"
 workspace = "KAIROS_FRAMEWORK"
 route = "KAIROS_FRAMEWORK/KAIROS_FRAMEWORK_RULES"
-updated_at = "2026-09-08T10:30:00Z"
+updated_at = "2026-09-09T08:45:00Z"
 capsule = "Binding operating rules for KAIROS authority, project initiation, retrieval-first context acquisition, fail-closed Workshop use, and change discipline."
 claim_boundary = "This framework source owns the procedure and rules it states; it does not prove live project state, project outcomes, or facts outside its declared scope."
 entities = ["KAIROS", "KAIROS_FRAMEWORK_RULES"]
@@ -82,10 +82,12 @@ loop material in `archive/`.
 
 For a fresh external project, Human intent comes first. A reviewed
 `kairos-project-kickoff/v1` contract establishes the project goal, milestone, task and
-criteria before compiler discovery. The compiler then owns translation-unit membership;
-KAIROS may not infer project goals from source layout or replace compiler membership with
-filename/build-prose guesses. Static header closure must preserve compiler include-root
-order and fail closed when a dependency cannot be represented without preprocessor guessing.
+criteria before source discovery. The agent then runs `kickstart detect <project>` and
+`kickstart init --auto`. Python/JavaScript/TypeScript/Rust/Go/JVM/.NET/Ruby/PHP use bounded
+project-local source membership with exact hashes and ledgers; KAIROS does not invent dynamic
+imports, runtime reachability or build participation. C/C++/CUDA translation-unit membership
+remains compiler-produced and fail-closed, with compiler-guided local-header closure. Mixed
+projects combine these authorities without projecting non-C-family files as translation units.
 
 <a id="s-mandatory-context-loop"></a>
 ## Mandatory context loop
@@ -105,10 +107,13 @@ when the contract requires it.
 
 > Capsule: The harness owns document validation and deterministic promotion. The Workshop is the only
 
-The harness owns document validation and deterministic promotion. The Workshop is the only
-writer for a configured live Runtime/blueprint corpus, and only after a sealed checkout,
-metadata review, mechanical preparation, isolated verification, and postcheck. Humans,
-agents, editors, build tools, and copy utilities do not edit a configured live corpus.
+The harness owns document validation and deterministic promotion. Initial intake observes the
+original project read-only and may deterministically create the first KAIROS Markdown/database
+baseline. After seal, the Workshop is the only writer for governed source, governed build/config
+authority and governed Markdown. Humans, agents, editors, watchers, adapters, build tools and copy
+utilities do not edit the configured live corpus directly. They may edit only Workshop transaction
+candidate/work trees. Any analysis or external tool with plausible write side effects must run on
+an isolated clone/snapshot rather than the governed original.
 
 An optional parity adapter is project-supplied and must be explicitly bound. The canonical
 package supplies no build command, scientific domain, fixture, runner, or result authority.
@@ -119,11 +124,11 @@ package supplies no build command, scientific domain, fixture, runner, or result
 > Capsule: Keep transactions bounded and preserve exact bytes, hashes, mappings, topology and provenance.
 
 Keep transactions bounded and preserve exact bytes, hashes, mappings, topology and provenance.
-Owner-only include-topology changes must update their source-index and affected header-owner
-authority in the same transaction. Added or removed governed local headers require the explicit
-`authority-checkout -> authority-prepare -> authority-verify -> authority-apply` migration path and
-must not be smuggled through an ordinary patch. Translation-unit membership or normalized compiler-
-context changes are refused with `BUILD_AUTHORITY_MIGRATION_REQUIRED` until a project-specific build-
-authority migration can reproduce the real build configuration. The generic migration consumes an
-isolated candidate tree and compiler database; it never guesses or rewrites the project build system. After any failed command, inspect state before retrying. Do not widen a scope or disable a gate to make a refusal disappear. Git and
-remote publication require an explicit, separate approval.
+Existing governed files use `checkout -> prepare -> verify -> apply`. Create/delete/rename of static-
+ecosystem sources use `source-set-checkout -> source-set-prepare -> source-set-verify -> source-set-apply`;
+the live project remains unchanged until verified apply. Candidate build/config changes and C-family
+topology are refused by that generic source-set path. C-family owner-only header changes remain derived
+inside the ordinary transaction; governed-header topology uses the compiler-backed authority migration,
+and compiler-context/build-authority changes require stronger project-specific proof. After any failed
+command, inspect state before retrying. Do not widen a scope or disable a gate to make a refusal disappear.
+Git and remote publication require an explicit, separate approval.

@@ -2,14 +2,14 @@
   "authority_note": "Framework Markdown owns claims; this database is a hash-verified read-only retrieval projection.",
   "build_epoch": "2000-01-01T00:00:00Z",
   "database_file": "framework.db",
-  "database_sha256": "880a3b69a82de7e11e5e0a55145374de0a6aad612052ea0550794773991286c5",
+  "database_sha256": "22d79a1a0e12ad346d67d71339677fbc39bd0c55d29bfa0b8b52ccd1819e01f5",
   "derived": true,
-  "document_count": 23,
+  "document_count": 24,
   "documents": [
     {
       "artifact_id": "KAIROS_FRAMEWORK_RULES",
       "path": "AGENTS.md",
-      "sha256": "51fcbab183233418f0bb8c5e9d7168f4ef561fd40d4933abd85603d5362a0bf3"
+      "sha256": "3e4017e28bb16d176f140f11f4827ef68805124f31fec587237c164319e614a8"
     },
     {
       "artifact_id": "KAIROS_README",
@@ -39,7 +39,7 @@
     {
       "artifact_id": "KAIROS_FRAMEWORK_BOOTSTRAP",
       "path": "docs/FRAMEWORK_BOOTSTRAP.md",
-      "sha256": "09c8ed2cba3b369f349d87b46a9ff96e6acf2c48b2a0e8090ec8f13c396e1ed3"
+      "sha256": "06593ad53e4e6e5d3d9530c21e26fb911603711988d793971e2f4c4ba5690fda"
     },
     {
       "artifact_id": "KAIROS_KNOWN_LIMITATIONS",
@@ -64,12 +64,17 @@
     {
       "artifact_id": "KAIROS_PROJECT_KICKSTART",
       "path": "docs/PROJECT_KICKSTART.md",
-      "sha256": "28e4e9bb480485370850dabe74d55b1a7693b09feab4684ab433d86b24d06f13"
+      "sha256": "29e8524c579343fdeba2214ec503a2681f86e1c6e12dd6c63d50617b7af3ee04"
+    },
+    {
+      "artifact_id": "KAIROS_UNIVERSAL_ONBOARDING",
+      "path": "docs/UNIVERSAL_ONBOARDING.md",
+      "sha256": "ca20881ce6b4b9dc435925a014e6cb4d58578d58015d4ec5cabc7b25e2c5da55"
     },
     {
       "artifact_id": "KAIROS_WORKSHOP",
       "path": "docs/WORKSHOP.md",
-      "sha256": "9c35a8c0233749424b652e3c3ab4beaec8299ea839959c440a319c3955703647"
+      "sha256": "74e8f92cd5c3e81727b8c93312cb6f75e623156f17f9dc699b1d069c3df84b0c"
     },
     {
       "artifact_id": "KAIROS_CONTEXT_HEADER_SPEC",
@@ -165,6 +170,30 @@
     },
     {
       "expected": [
+        "KAIROS_UNIVERSAL_ONBOARDING#s-cold-onboarding"
+      ],
+      "primary": "KAIROS_UNIVERSAL_ONBOARDING#s-cold-onboarding",
+      "query": "How do I onboard an arbitrary existing codebase into KAIROS?",
+      "required_top_k": 1
+    },
+    {
+      "expected": [
+        "KAIROS_UNIVERSAL_ONBOARDING#s-single-mutation-boundary"
+      ],
+      "primary": "KAIROS_UNIVERSAL_ONBOARDING#s-single-mutation-boundary",
+      "query": "After KAIROS seals a project, what is allowed to modify source code or Markdown?",
+      "required_top_k": 1
+    },
+    {
+      "expected": [
+        "KAIROS_UNIVERSAL_ONBOARDING#s-source-set-transactions"
+      ],
+      "primary": "KAIROS_UNIVERSAL_ONBOARDING#s-source-set-transactions",
+      "query": "How do I create delete or rename governed source files after seal?",
+      "required_top_k": 1
+    },
+    {
+      "expected": [
         "KAIROS_LLM_OPERATING_CONTRACT#s-context-policy"
       ],
       "primary": "KAIROS_LLM_OPERATING_CONTRACT#s-context-policy",
@@ -173,6 +202,6 @@
     }
   ],
   "schema": "kairos-framework-index/v1",
-  "version": "0.1.0-alpha.2",
+  "version": "0.1.0-alpha.3",
   "workspace_id": "KAIROS_FRAMEWORK"
 }

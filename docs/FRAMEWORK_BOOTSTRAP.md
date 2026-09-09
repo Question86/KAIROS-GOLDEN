@@ -2,12 +2,12 @@
 schema = "kairos-context/v1"
 id = "KAIROS_FRAMEWORK_BOOTSTRAP"
 type = "documentation"
-revision = 1
+revision = 2
 state = "active"
 authority = "operating_contract"
 workspace = "KAIROS_FRAMEWORK"
 route = "KAIROS_FRAMEWORK/KAIROS_FRAMEWORK_BOOTSTRAP"
-updated_at = "2026-09-08T10:30:00Z"
+updated_at = "2026-09-09T08:45:00Z"
 capsule = "Defines the pre-project bootstrap search: an agent can query hash-verified KAIROS rules before any project workspace or project database exists."
 claim_boundary = "This framework source owns the procedure and rules it states; it does not prove live project state, project outcomes, or facts outside its declared scope."
 entities = ["KAIROS", "KAIROS_FRAMEWORK_BOOTSTRAP"]
@@ -30,10 +30,16 @@ intent = "framework_search"
 question = "What is the difference between framework search and project search?"
 target = "s-framework-search-versus-project-search"
 
+[[answers]]
+intent = "onboarding"
+question = "Where does framework bootstrap hand off to universal project onboarding?"
+target = "s-handoff-into-a-project"
+
 [refs]
 rules = "[ref:AGENTS.md#s-mandatory-context-loop|id:KAIROS_FRAMEWORK_RULES|v:1|rel:requires|tags:rules,bootstrap|src:framework]"
 search = "[ref:kairos/kairos_harness/docs/SEARCH_INDEX.md#s-kairos-search-query|id:KAIROS_SEARCH_INDEX|v:1|rel:requires|tags:search,retrieval|src:framework]"
-kickstart = "[ref:docs/PROJECT_KICKSTART.md#s-1-project-intent-precedes-code-discovery|id:KAIROS_PROJECT_KICKSTART|v:1|rel:next|tags:kickstart,intent|src:framework]"
+kickstart = "[ref:docs/PROJECT_KICKSTART.md#s-universal-auto-intake|id:KAIROS_PROJECT_KICKSTART|v:2|rel:next|tags:kickstart,auto|src:framework]"
+onboarding = "[ref:docs/UNIVERSAL_ONBOARDING.md#s-cold-onboarding|id:KAIROS_UNIVERSAL_ONBOARDING|v:1|rel:next|tags:onboarding,universal|src:framework]"
 
 [[search_contract]]
 query = "How do I query KAIROS rules before a project workspace exists?"
@@ -87,7 +93,7 @@ A search without `--workspace` uses only the immutable framework corpus. A searc
 
 > Capsule: Use question-shaped queries rather than asking the model to reconstruct rules from directory layout. Useful first questions include how project intent is established, what the compiler owns, how source inspection is permitted, how the Works
 
-Use question-shaped queries rather than asking the model to reconstruct rules from directory layout. Useful first questions include how project intent is established, what the compiler owns, how source inspection is permitted, how the Workshop changes governed code, what requires authority migration, and what a successful postcheck does not prove.
+Use question-shaped queries rather than asking the model to reconstruct rules from directory layout. For a new codebase, ask `How do I onboard an arbitrary existing codebase into KAIROS?`, then ask `After KAIROS seals a project, what is allowed to modify source code or Markdown?`. The returned universal onboarding contract supplies `detect`, `--auto`, the C-family compiler boundary, clone-before-risk, ordinary Workshop mutation and source-set transactions.
 
 <a id="s-authority-boundary"></a>
 ## Authority boundary
@@ -101,4 +107,4 @@ Framework search routes inspection; it does not create truth. Each result retain
 
 > Capsule: After the Human goal is converted into a reviewed kairos-project-kickoff/v1 contract, project intake may create a fresh project workspace and project database from compiler evidence. From that point, project questions use kairos search --wo
 
-After the Human goal is converted into a reviewed `kairos-project-kickoff/v1` contract, project intake may create a fresh project workspace and project database from compiler evidence. From that point, project questions use `kairos search --workspace <path> ...`; framework-rule questions remain available through the workspace-free search path.
+After framework search retrieves the universal onboarding contract, the agent runs `kickstart detect <project>`, establishes the reviewed Human `kairos-project-kickoff/v1` contract, and runs `kickstart init --auto`. Static ecosystems use bounded exact source membership; C/C++/CUDA remains compiler-backed. Intake observes the original project read-only, creates the initial KAIROS/Workshop baseline, and returns `VERIFIED_PENDING_SEAL`. The agent then seals through Workshop. From that point, project questions use `kairos search --workspace <path> ...`; framework-rule questions remain available through the workspace-free search path, and all governed mutations go through Workshop transactions.

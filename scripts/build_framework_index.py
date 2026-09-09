@@ -55,6 +55,21 @@ GOLD_QUERIES: tuple[tuple[str, tuple[str, ...], int], ...] = (
         1,
     ),
     (
+        "How do I onboard an arbitrary existing codebase into KAIROS?",
+        ("KAIROS_UNIVERSAL_ONBOARDING#s-cold-onboarding",),
+        1,
+    ),
+    (
+        "After KAIROS seals a project, what is allowed to modify source code or Markdown?",
+        ("KAIROS_UNIVERSAL_ONBOARDING#s-single-mutation-boundary",),
+        1,
+    ),
+    (
+        "How do I create delete or rename governed source files after seal?",
+        ("KAIROS_UNIVERSAL_ONBOARDING#s-source-set-transactions",),
+        1,
+    ),
+    (
         "How should an LLM acquire context in KAIROS?",
         ("KAIROS_LLM_OPERATING_CONTRACT#s-context-policy",),
         1,

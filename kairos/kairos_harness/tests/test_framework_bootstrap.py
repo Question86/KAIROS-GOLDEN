@@ -72,6 +72,9 @@ class FrameworkBootstrapTests(unittest.TestCase):
             'When is authority migration required?': ('KAIROS_WORKSHOP', 's-authority-migration'),
             'What does a successful KAIROS Workshop postcheck not prove?': ('KAIROS_KNOWN_LIMITATIONS', 's-verification-boundary'),
             'How should an LLM acquire context in KAIROS?': ('KAIROS_LLM_OPERATING_CONTRACT', 's-context-policy'),
+            'How do I onboard an arbitrary existing codebase into KAIROS?': ('KAIROS_UNIVERSAL_ONBOARDING', 's-cold-onboarding'),
+            'After KAIROS seals a project, what is allowed to modify source code or Markdown?': ('KAIROS_UNIVERSAL_ONBOARDING', 's-single-mutation-boundary'),
+            'How do I create delete or rename governed source files after seal?': ('KAIROS_UNIVERSAL_ONBOARDING', 's-source-set-transactions'),
         }
         for query, expected in cases.items():
             with self.subTest(query=query):

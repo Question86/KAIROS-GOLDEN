@@ -2,16 +2,16 @@
 schema = "kairos-context/v1"
 id = "KAIROS_PROJECT_KICKSTART"
 type = "documentation"
-revision = 1
+revision = 2
 state = "active"
 authority = "operating_contract"
 workspace = "KAIROS_FRAMEWORK"
 route = "KAIROS_FRAMEWORK/KAIROS_PROJECT_KICKSTART"
-updated_at = "2026-09-08T10:30:00Z"
-capsule = "Authoritative project-initiation procedure: Human intent first, compiler-backed membership second, then exact Markdown/database baseline and Workshop handoff."
+updated_at = "2026-09-09T08:45:00Z"
+capsule = "Authoritative project-initiation procedure: framework search and Human intent first, universal detect/auto intake second, compiler-backed C-family authority where required, then exact Markdown/database baseline and Workshop handoff."
 claim_boundary = "This framework source owns the procedure and rules it states; it does not prove live project state, project outcomes, or facts outside its declared scope."
 entities = ["KAIROS", "KAIROS_PROJECT_KICKSTART"]
-facets = ["kickstart", "intent", "compiler", "ground-truth"]
+facets = ["kickstart", "intent", "universal-intake", "compiler", "ground-truth"]
 criteria = []
 does_not_answer = ["live project state", "project-specific execution outcome"]
 
@@ -35,6 +35,11 @@ intent = "ground_truth"
 question = "What is the ground-truth contract during KAIROS project intake?"
 target = "s-ground-truth-contract"
 
+[[answers]]
+intent = "universal_intake"
+question = "How do I initialize a Python Rust JavaScript TypeScript Go Java .NET Ruby PHP or mixed project with KAIROS?"
+target = "s-universal-auto-intake"
+
 [[search_contract]]
 query = "How do I initialize an existing C++ project with KAIROS?"
 expected = "KAIROS_PROJECT_KICKSTART#s-1-project-intent-precedes-code-discovery"
@@ -57,9 +62,10 @@ required_top_k = 1
 
 > Capsule: The canonical framework is intentionally unbound. A real project is created in two ordered
 
-The canonical framework is intentionally unbound. A real project is created in two ordered
-steps: first establish Human project intent, then bind compiler-observed implementation
-reality under that exact goal/milestone/task scope.
+The canonical framework is intentionally unbound. A real project begins by retrieving the
+framework onboarding contract, establishing Human intent, detecting the ecosystem(s), and binding
+observed implementation reality under that exact goal/milestone/task scope. Static ecosystems use
+bounded exact source membership; C-family translation units retain stronger compiler authority.
 
 <a id="s-1-project-intent-precedes-code-discovery"></a>
 ## 1. Project intent precedes code discovery
@@ -81,8 +87,37 @@ A fresh compiler intake refuses to run without this contract. An already initial
 workspace may omit it only when its active goal/milestone/task scope already exists; if a
 contract is supplied there, its identifiers must exactly match that active authority.
 
+<a id="s-universal-auto-intake"></a>
+## 2. Universal detect and auto intake
+
+> Capsule: `detect` identifies supported ecosystems without mutating the project; `init --auto` creates the exact initial KAIROS/Workshop baseline while preserving compiler-backed C-family membership.
+
+From the release root:
+
+```text
+python -m kickstart detect <project>
+python -m kickstart init --auto --project-root <project> --workspace <fresh-kairos-workspace> --spec-file project-spec.json
+```
+
+Supported static ecosystems are Python, JavaScript/TypeScript, Rust, Go, Java/Kotlin/Groovy,
+.NET, Ruby and PHP. Their initial authority is exact project-local source membership with byte
+hashes and verbatim ledgers; dynamic imports, runtime reachability and build participation are not
+invented. Generated/vendor trees are excluded.
+
+If C/C++/CUDA translation units are detected, `--auto` additionally requires compiler-produced
+membership:
+
+```text
+python -m kickstart init --auto --project-root <project> --workspace <fresh-kairos-workspace> --spec-file project-spec.json --auto-compile-commands <build>/compile_commands.json
+```
+
+Mixed projects combine static and compiler-backed authority without treating Python/Rust/etc. as
+C-family translation units. Initial intake reads the governed project and writes the KAIROS workspace;
+it does not modify the governed project. If an analysis/build tool could write project or build files,
+it must run against an isolated clone/snapshot.
+
 <a id="s-2-compiler-backed-implementation-binding"></a>
-## 2. Compiler-backed implementation binding
+## 3. C-family compiler-backed implementation binding
 
 > Capsule: The command never edits the project source tree. It writes only the selected KAIROS
 
@@ -154,12 +189,16 @@ but does not mark the project corpus verified.
 
 > Capsule: A verified intake may enter the separate Workshop lifecycle:
 
-A verified intake may enter the separate Workshop lifecycle:
+A verified universal intake returns `VERIFIED_PENDING_SEAL` and then enters Workshop:
 
 ```text
-status -> seal -> checkout -> edit transaction work tree -> metadata review
-       -> prepare -> verify -> apply -> postcheck/reseal
+status -> seal
+existing file: checkout -> edit transaction work tree -> metadata review -> prepare -> verify -> apply -> POSTCHECK_VERIFIED
+source-set: source-set-checkout -> edit candidate tree -> source-set-prepare -> source-set-verify -> source-set-apply -> POSTCHECK_VERIFIED
 ```
+
+After seal, Workshop is the only mutation path for governed source and governed Markdown. Direct
+live edits followed by rediscovery or documentation repair are forbidden.
 
 The first real Workshop patch is part of the portability contract: the native shadow carries
 the authoritative KAIROS reference targets required by the changed code documents, so an
