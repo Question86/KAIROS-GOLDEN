@@ -11,6 +11,7 @@ from .auxiliary import AuxiliaryDocumentTransaction
 from .engine import WorkshopEngine
 from .migration import AuthorityMigration
 from .repair import BootstrapRepair
+from .universal_migration import UniversalSourceSetMigration
 from .util import WorkshopError
 
 
@@ -32,10 +33,25 @@ def _parser() -> argparse.ArgumentParser:
         help="stage the verified document-only legacy repair in an isolated KAIROS shadow",
     )
 
-    checkout = sub.add_parser("checkout", help="open one exclusive transaction over named translation units")
-    checkout.add_argument("--source", action="append", required=True, help="DATAFLOW-relative translation unit; repeatable")
+    checkout = sub.add_parser("checkout", help="open one exclusive transaction over named governed sources")
+    checkout.add_argument("--source", action="append", required=True, help="governed source path; repeatable")
     checkout.add_argument("--purpose", required=True)
     checkout.add_argument("--test", action="append", default=[], help="configured dependent test whose Runtime owner is selected")
+
+    source_set_checkout = sub.add_parser(
+        "source-set-checkout",
+        help="open a Workshop-owned candidate tree for static source create/delete/rename",
+    )
+    source_set_checkout.add_argument("--purpose", required=True)
+    for name, help_text in (
+        ("source-set-prepare", "derive source/Markdown/membership deltas from the Workshop-owned candidate tree"),
+        ("source-set-verify", "verify source-set topology and KAIROS projection in an isolated shadow"),
+        ("source-set-apply", "atomically apply the verified source-set migration and reseal"),
+        ("source-set-abort", "abort the source-set candidate while live bytes remain sealed"),
+        ("source-set-transaction", "show one universal source-set transaction"),
+    ):
+        command = sub.add_parser(name, help=help_text)
+        command.add_argument("transaction_id")
 
     auxiliary_checkout = sub.add_parser(
         "auxiliary-checkout",
@@ -107,7 +123,7 @@ def _parser() -> argparse.ArgumentParser:
 
     authority_checkout = sub.add_parser(
         "authority-checkout",
-        help="stage an explicit compiler-backed add/remove/rename authority migration from an isolated candidate tree",
+        help="stage an explicit compiler-backed authority migration from an isolated candidate tree",
     )
     authority_checkout.add_argument("--candidate-root", required=True)
     authority_checkout.add_argument("--compile-commands", required=True)
@@ -157,6 +173,7 @@ def execute(arguments: argparse.Namespace) -> dict[str, Any]:
     bootstrap = BootstrapRepair(engine)
     auxiliary = AuxiliaryDocumentTransaction(engine)
     authority = AuthorityMigration(engine)
+    source_set = UniversalSourceSetMigration(engine)
     command = arguments.command
     if command == "status":
         return engine.status()
@@ -168,6 +185,18 @@ def execute(arguments: argparse.Namespace) -> dict[str, Any]:
         return bootstrap.stage()
     if command == "checkout":
         return engine.checkout(arguments.source, purpose=arguments.purpose, tests=arguments.test)
+    if command == "source-set-checkout":
+        return source_set.checkout(purpose=arguments.purpose)
+    if command == "source-set-prepare":
+        return source_set.prepare(arguments.transaction_id)
+    if command == "source-set-verify":
+        return source_set.verify(arguments.transaction_id)
+    if command == "source-set-apply":
+        return source_set.apply(arguments.transaction_id)
+    if command == "source-set-abort":
+        return source_set.abort(arguments.transaction_id)
+    if command == "source-set-transaction":
+        return source_set.transaction_status(arguments.transaction_id)
     if command == "auxiliary-checkout":
         return auxiliary.checkout(arguments.document, purpose=arguments.purpose)
     if command == "prepare":
