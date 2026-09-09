@@ -43,7 +43,7 @@ target = "s-clone-before-risk"
 [refs]
 rules = "[ref:AGENTS.md#s-fail-closed-boundaries|id:KAIROS_FRAMEWORK_RULES|v:2|rel:constrained_by|tags:rules,mutation|src:framework]"
 kickstart = "[ref:docs/PROJECT_KICKSTART.md#s-universal-auto-intake|id:KAIROS_PROJECT_KICKSTART|v:2|rel:implements|tags:kickstart,auto|src:framework]"
-workshop = "[ref:docs/WORKSHOP.md#s-universal-source-set-mutation|id:KAIROS_WORKSHOP|v:2|rel:continues_with|tags:workshop,source-set|src:framework]"
+workshop = "[ref:docs/WORKSHOP.md#s-universal-source-set-mutation|id:KAIROS_WORKSHOP|v:2|rel:next|tags:workshop,source-set|src:framework]"
 
 [[search_contract]]
 query = "How do I onboard an arbitrary existing codebase into KAIROS?"
