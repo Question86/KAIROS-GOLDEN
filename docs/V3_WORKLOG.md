@@ -93,16 +93,37 @@ Step-2 gates proven on GitHub Actions:
 - the cold gate verifies that `detect`, initial intake, `prepare` and shadow `verify` leave the governed live project byte-identical until verified apply;
 - final Workshop apply is bit-exact.
 
-Step 2 does not broaden release claims beyond this bootstrap proof. Cross-ecosystem release-candidate cold coverage and complete forbidden-write-path audit remain Step 3 work.
+## Step 3 — COMPLETE / FINAL SEAL CANDIDATE
 
-## Step 3 — NEXT / FINAL DEVELOPMENT BLOCK
+Release Hardening + Final Gate is closed as a development block. No new feature work remains before the alpha.3 seal.
 
-Release Hardening + Final Gate only. No new feature development:
+Hardening completed:
 
-- audit the complete corpus for forbidden secondary write paths;
-- run complete regression/compile/cold ecosystem gates;
-- rebuild deterministic framework DB, manifests and release artifact from one exact commit;
-- verify hashes and release consistency;
-- final seal that exact commit.
+- the legacy CMake intake path no longer exposes the governed source directory to CMake; configure runs against a disposable source clone;
+- CMake build directories inside the governed project are rejected before configure;
+- compiler evidence emitted from the clone is normalized back to the original observed source identities before authority intake;
+- an adversarial regression deliberately writes into `CMAKE_SOURCE_DIR` during configure and proves the write reaches only the disposable clone;
+- a machine-readable AST write-boundary audit scans productive KAIROS/Kickstart/Workshop Python implementation paths and fails if a live source/runtime/blueprint authority root reaches a write sink outside the Workshop implementation boundary;
+- clone-isolated mutation-capable tool calls are separately bound to explicit static contracts and regression tests rather than treated as generic write exceptions;
+- a cold release-style cross-ecosystem matrix exercises the public CLI and Workshop surfaces from a fresh archive with no `.git` state;
+- `docs/RELEASE_NOTES_0.1.0_ALPHA3.md` records the alpha.3 scope and verified release claims;
+- `.github/workflows/v3-final-seal.yml` repeats all release gates on the exact final commit, builds the source ZIP twice, requires byte identity, emits a content-addressed seal manifest and tags only after every gate succeeds.
 
-After Step 3 there is no fourth development block before final seal.
+Step-3 hardening gate proven on GitHub Actions before arming the final seal:
+
+- Python `compileall`: PASS;
+- sole post-seal write-boundary audit: PASS, 56 productive Python implementation files scanned, zero findings;
+- KAIROS harness: 145/145 PASS;
+- Kickstart / Universal Intake: 31/31 PASS, including clone-isolated CMake regression;
+- Workshop: 21/21 PASS;
+- deterministic framework projection rebuild: PASS and byte-identical to bundled `framework.db`;
+- framework database SHA-256 remains `22d79a1a0e12ad346d67d71339677fbc39bd0c55d29bfa0b8b52ccd1819e01f5`;
+- zero-state cold bootstrap from fresh `git archive`: PASS, first transaction `POSTCHECK_VERIFIED`, bit-exact;
+- cold ecosystem matrix: 10/10 PASS;
+- cold cases reaching bit-exact `POSTCHECK_VERIFIED`: Python, JavaScript/TypeScript, Rust, Go, JVM/Java, .NET/C#, Ruby, PHP, mixed C-family + Python, and Python source-set create/delete/rename.
+
+The final seal workflow must now rerun these gates against this exact armed commit. It may tag only that exact commit as `v0.1.0-alpha.3` and must retain the deterministic source ZIP plus `kairos-release-seal/v1` manifest together as GitHub Actions artifacts.
+
+FINAL_SEAL_READY: true
+
+After the successful seal workflow there is no fourth development block. Any later change is post-alpha.3 work and requires a new version/branch decision rather than silently modifying the sealed alpha.3 commit.
