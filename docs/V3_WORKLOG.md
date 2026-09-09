@@ -63,15 +63,39 @@ Step-1 gates proven on GitHub Actions:
 
 The source-set transaction deliberately does not claim generic build-system mutation authority. If a topology change requires CMake/Cargo/Gradle/package/build configuration to change, that configuration must have an explicit Workshop authority path; direct live mutation remains forbidden.
 
-## Step 2 — NEXT
+## Step 2 — COMPLETE
 
-Framework Contract + Search + Cold Bootstrap:
+Framework Contract + Search + Cold Bootstrap is closed on `v3`.
 
-- make `detect`, `--auto`, intake-read-only, clone-before-risk and Workshop-only mutation rules self-discoverable through KAIROS Search;
-- rebuild the framework search/database authority from those canonical documents;
-- prove a cold foreign agent can pull the release candidate, discover onboarding through KAIROS itself, perform intake, seal and reach its first verified Workshop transaction without hidden local knowledge.
+Implemented:
 
-## Step 3 — AFTER STEP 2
+- canonical `KAIROS_UNIVERSAL_ONBOARDING` operating contract admitted to the immutable framework corpus;
+- framework-search answers for zero-context onboarding, universal `detect` / `--auto`, the post-seal single mutation boundary, clone-before-risk, ordinary Workshop edits and static source-set transactions;
+- `AGENTS.md`, framework bootstrap, project kickstart and Workshop contracts advanced to the universal-intake model so the searchable corpus no longer defaults to a C++-only onboarding story;
+- explicit static-ecosystem claim boundaries: project-local membership/hashes/ledgers without invented imports, runtime reachability or build participation;
+- explicit compiler-backed fail-closed C/C++/CUDA boundary retained for mixed projects;
+- explicit rule that potentially mutating analysis/build tooling runs only against an isolated clone/snapshot;
+- framework bundle version advanced to `0.1.0-alpha.3` and `docs/UNIVERSAL_ONBOARDING.md` added to the executable framework document inventory;
+- deterministic framework search projection rebuilt from 24 canonical framework documents with 9 gold queries;
+- universal intake public result made explicit with top-level `verified = true` after heartbeat and Workshop corpus verification;
+- zero-state cold-bootstrap gate implemented using only public source-release CLI surfaces.
+
+Step-2 gates proven on GitHub Actions:
+
+- bundled framework manifest/database/source inventory hash verification passes;
+- independent framework rebuild is binary-identical to the bundled `framework.db`;
+- framework database SHA-256 is `22d79a1a0e12ad346d67d71339677fbc39bd0c55d29bfa0b8b52ccd1819e01f5`;
+- framework search returns `KAIROS_UNIVERSAL_ONBOARDING#s-cold-onboarding` for arbitrary-codebase onboarding;
+- framework search returns `KAIROS_UNIVERSAL_ONBOARDING#s-single-mutation-boundary` for post-seal write authority;
+- framework search returns `KAIROS_UNIVERSAL_ONBOARDING#s-source-set-transactions` for create/delete/rename authority;
+- a fresh `git archive` with no `.git` metadata serves the verified immutable framework search bundle;
+- from that fresh archive a zero-state Python project completes `detect -> init --auto -> VERIFIED_PENDING_SEAL -> seal -> checkout -> prepare -> SHADOW_VERIFIED -> apply -> POSTCHECK_VERIFIED`;
+- the cold gate verifies that `detect`, initial intake, `prepare` and shadow `verify` leave the governed live project byte-identical until verified apply;
+- final Workshop apply is bit-exact.
+
+Step 2 does not broaden release claims beyond this bootstrap proof. Cross-ecosystem release-candidate cold coverage and complete forbidden-write-path audit remain Step 3 work.
+
+## Step 3 — NEXT / FINAL DEVELOPMENT BLOCK
 
 Release Hardening + Final Gate only. No new feature development:
 
@@ -80,3 +104,5 @@ Release Hardening + Final Gate only. No new feature development:
 - rebuild deterministic framework DB, manifests and release artifact from one exact commit;
 - verify hashes and release consistency;
 - final seal that exact commit.
+
+After Step 3 there is no fourth development block before final seal.
