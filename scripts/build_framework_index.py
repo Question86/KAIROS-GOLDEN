@@ -215,6 +215,10 @@ def main() -> int:
     parser.add_argument("--output", default=str(HARNESS / "kairos" / FRAMEWORK_DATABASE_NAME))
     parser.add_argument("--manifest", default=str(HARNESS / "kairos" / FRAMEWORK_MANIFEST_NAME))
     parser.add_argument("--verify-determinism", action="store_true")
+    parser.add_argument(
+        "--compare-content-with",
+        help="Require the rebuilt database to have the same logical content as this bundled database",
+    )
     args = parser.parse_args()
 
     output = Path(args.output).resolve()
@@ -232,14 +236,25 @@ def main() -> int:
                 raise SystemExit("framework DB content is not deterministic")
             if [item["sha256"] for item in second_manifest["documents"]] != [item["sha256"] for item in manifest["documents"]]:
                 raise SystemExit("framework document inventory changed between deterministic builds")
+    compared_database = None
+    if args.compare_content_with:
+        compared_database = Path(args.compare_content_with).resolve()
+        compared_content_sha = framework_database_content_sha256(compared_database)
+        if compared_content_sha != manifest["database_content_sha256"]:
+            raise SystemExit(
+                "framework DB logical content differs from bundle: "
+                f"{manifest['database_content_sha256']} != {compared_content_sha}"
+            )
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps({
         "verified": True,
         "database": str(output),
         "database_sha256": manifest["database_sha256"],
+        "database_content_sha256": manifest["database_content_sha256"],
         "document_count": manifest["document_count"],
         "gold_queries": len(manifest["gold_queries"]),
         "determinism_checked": bool(args.verify_determinism),
+        "content_compared_with": str(compared_database) if compared_database else None,
     }, indent=2))
     return 0
 

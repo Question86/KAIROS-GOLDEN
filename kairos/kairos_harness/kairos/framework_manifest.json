@@ -203,6 +203,6 @@
     }
   ],
   "schema": "kairos-framework-index/v1",
-  "version": "0.1.0-alpha.3",
+  "version": "0.1.0-alpha.4",
   "workspace_id": "KAIROS_FRAMEWORK"
 }

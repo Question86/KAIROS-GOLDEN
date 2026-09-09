@@ -127,3 +127,13 @@ The final seal workflow must now rerun these gates against this exact armed comm
 FINAL_SEAL_READY: true
 
 After the successful seal workflow there is no fourth development block. Any later change is post-alpha.3 work and requires a new version/branch decision rather than silently modifying the sealed alpha.3 commit.
+
+## Post-alpha.3 hardening - alpha.4 candidate
+
+The Windows portability and verification changes are versioned as
+`0.1.0-alpha.4`; the immutable `v0.1.0-alpha.3` tag remains on its original
+sealed commit. The alpha.4 final-seal workflow requires 145 KAIROS harness,
+32 Kickstart, and 23 Workshop tests, then verifies the combined census of 200
+tests before creating the content-addressed artifact pair and exact alpha.4 tag.
+
+FINAL_SEAL_READY_ALPHA4: true

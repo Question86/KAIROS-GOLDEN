@@ -38,8 +38,8 @@ jobs:
           python scripts/build_framework_index.py \
             --output /tmp/kairos-v3-framework/framework.db \
             --manifest /tmp/kairos-v3-framework/framework_manifest.json \
-            --verify-determinism
-          cmp /tmp/kairos-v3-framework/framework.db kairos/kairos_harness/kairos/framework.db
+            --verify-determinism \
+            --compare-content-with kairos/kairos_harness/kairos/framework.db
       - name: Create fresh candidate archive
         run: |
           rm -rf /tmp/kairos-v3-release-cold

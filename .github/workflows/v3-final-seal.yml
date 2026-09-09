@@ -1,8 +1,16 @@
-name: V3 alpha.3 final seal
+name: V3 alpha.4 final seal
 
 on:
   push:
     branches: [v3]
+
+env:
+  RELEASE_VERSION: 0.1.0-alpha.4
+  RELEASE_TAG: v0.1.0-alpha.4
+  EXPECTED_HARNESS_COUNT: '145'
+  EXPECTED_KICKSTART_COUNT: '32'
+  EXPECTED_WORKSHOP_COUNT: '23'
+  EXPECTED_REGRESSION_TOTAL: '200'
 
 jobs:
   eligibility:
@@ -47,6 +55,29 @@ jobs:
       - name: Compile every Python surface
         run: python -m compileall -q kickstart kairos/kairos_harness workshop/src scripts
 
+      - name: Verify release identity
+        env:
+          PYTHONPATH: kairos/kairos_harness
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from kairos.framework import FRAMEWORK_VERSION
+
+          manifest = json.loads(
+              Path('kairos/kairos_harness/kairos/framework_manifest.json').read_text(encoding='utf-8')
+          )
+          expected = os.environ['RELEASE_VERSION']
+          if FRAMEWORK_VERSION != expected or manifest.get('version') != expected:
+              raise SystemExit(
+                  f'release identity mismatch: workflow={expected!r}, '
+                  f'framework={FRAMEWORK_VERSION!r}, manifest={manifest.get("version")!r}'
+              )
+          print(f'Release identity verified: {expected}')
+          PY
+
       - name: Audit sole post-seal write boundary
         run: python scripts/v3_write_boundary_audit.py | tee /tmp/write-boundary.json
 
@@ -58,7 +89,7 @@ jobs:
           set -o pipefail
           python -m unittest discover -s kairos/kairos_harness/tests -p 'test_*.py' -v 2>&1 | tee /tmp/harness.log
           count=$(grep -Eo 'Ran [0-9]+ tests' /tmp/harness.log | tail -1 | awk '{print $2}')
-          test "$count" = '145'
+          test "$count" = "$EXPECTED_HARNESS_COUNT"
           echo "HARNESS_COUNT=$count" >> "$GITHUB_ENV"
 
       - name: Run and count full Kickstart regression
@@ -67,7 +98,7 @@ jobs:
           set -o pipefail
           python -m unittest discover -s kickstart/tests -p 'test_*.py' -v 2>&1 | tee /tmp/kickstart.log
           count=$(grep -Eo 'Ran [0-9]+ tests' /tmp/kickstart.log | tail -1 | awk '{print $2}')
-          test "$count" = '31'
+          test "$count" = "$EXPECTED_KICKSTART_COUNT"
           echo "KICKSTART_COUNT=$count" >> "$GITHUB_ENV"
 
       - name: Run and count full Workshop regression
@@ -78,8 +109,16 @@ jobs:
           set -o pipefail
           python -m unittest discover -s workshop/tests -p 'test_*.py' -v 2>&1 | tee /tmp/workshop.log
           count=$(grep -Eo 'Ran [0-9]+ tests' /tmp/workshop.log | tail -1 | awk '{print $2}')
-          test "$count" = '21'
+          test "$count" = "$EXPECTED_WORKSHOP_COUNT"
           echo "WORKSHOP_COUNT=$count" >> "$GITHUB_ENV"
+
+      - name: Verify complete regression census
+        shell: bash
+        run: |
+          total=$((HARNESS_COUNT + KICKSTART_COUNT + WORKSHOP_COUNT))
+          echo "Regression test total: $total"
+          test "$total" = "$EXPECTED_REGRESSION_TOTAL"
+          echo "REGRESSION_TOTAL=$total" >> "$GITHUB_ENV"
 
       - name: Verify deterministic framework projection against bundle
         shell: bash
@@ -89,8 +128,8 @@ jobs:
           python scripts/build_framework_index.py \
             --output /tmp/kairos-v3-framework-seal/framework.db \
             --manifest /tmp/kairos-v3-framework-seal/framework_manifest.json \
-            --verify-determinism
-          cmp /tmp/kairos-v3-framework-seal/framework.db kairos/kairos_harness/kairos/framework.db
+            --verify-determinism \
+            --compare-content-with kairos/kairos_harness/kairos/framework.db
 
       - name: Build fresh release-style tree
         shell: bash
@@ -112,8 +151,8 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          name='KAIROS-GOLDEN-v0.1.0-alpha.3.zip'
-          prefix='KAIROS-GOLDEN-0.1.0-alpha.3/'
+          name="KAIROS-GOLDEN-v${RELEASE_VERSION}.zip"
+          prefix="KAIROS-GOLDEN-${RELEASE_VERSION}/"
           git archive --format=zip --prefix="$prefix" "$GITHUB_SHA" -o "dist/$name"
           git archive --format=zip --prefix="$prefix" "$GITHUB_SHA" -o "/tmp/$name.second"
           cmp "dist/$name" "/tmp/$name.second"
@@ -140,8 +179,8 @@ jobs:
           ).strip()
           payload = {
               'schema': 'kairos-release-seal/v1',
-              'version': '0.1.0-alpha.3',
-              'tag': 'v0.1.0-alpha.3',
+              'version': os.environ['RELEASE_VERSION'],
+              'tag': os.environ['RELEASE_TAG'],
               'commit_sha': os.environ['GITHUB_SHA'],
               'source_commit_time': commit_time,
               'archive': {
@@ -160,6 +199,7 @@ jobs:
                   'harness': int(os.environ['HARNESS_COUNT']),
                   'kickstart': int(os.environ['KICKSTART_COUNT']),
                   'workshop': int(os.environ['WORKSHOP_COUNT']),
+                  'total': int(os.environ['REGRESSION_TOTAL']),
                   'compileall': True,
                   'write_boundary_audit': bool(audit['verified']),
                   'write_boundary_files_scanned': int(audit['python_files_scanned']),
@@ -183,7 +223,8 @@ jobs:
               raise SystemExit('cold bootstrap was not verified')
           if not payload['cold_validation']['ecosystem_matrix_verified'] or not payload['cold_validation']['all_cases_postcheck_verified']:
               raise SystemExit('cold ecosystem matrix was not fully verified')
-          (root / 'dist' / 'KAIROS-GOLDEN-v0.1.0-alpha.3-seal.json').write_text(
+          seal_name = f"KAIROS-GOLDEN-v{os.environ['RELEASE_VERSION']}-seal.json"
+          (root / 'dist' / seal_name).write_text(
               json.dumps(payload, indent=2, sort_keys=True) + '\n', encoding='utf-8'
           )
           print(json.dumps(payload, indent=2, sort_keys=True))
@@ -192,16 +233,16 @@ jobs:
       - name: Upload sealed release pair
         uses: actions/upload-artifact@v4
         with:
-          name: KAIROS-GOLDEN-v0.1.0-alpha.3-seal
+          name: KAIROS-GOLDEN-v${{ env.RELEASE_VERSION }}-seal
           path: |
-            dist/KAIROS-GOLDEN-v0.1.0-alpha.3.zip
-            dist/KAIROS-GOLDEN-v0.1.0-alpha.3-seal.json
+            dist/KAIROS-GOLDEN-v${{ env.RELEASE_VERSION }}.zip
+            dist/KAIROS-GOLDEN-v${{ env.RELEASE_VERSION }}-seal.json
           if-no-files-found: error
 
       - name: Tag the exact sealed commit
         shell: bash
         run: |
-          tag='v0.1.0-alpha.3'
+          tag="$RELEASE_TAG"
           git fetch --tags --force
           if git show-ref --verify --quiet "refs/tags/$tag"; then
             existing=$(git rev-list -n 1 "$tag")

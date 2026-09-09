@@ -39,7 +39,7 @@ jobs:
           from kairos.framework import verify_framework_bundle
           result = verify_framework_bundle()
           assert result["verified"]
-          assert result["version"] == "0.1.0-alpha.3"
+          assert result["version"] == "0.1.0-alpha.4"
           print(result)
           PY
       - name: Rebuild framework projection independently
@@ -48,8 +48,8 @@ jobs:
           python scripts/build_framework_index.py \
             --output /tmp/kairos-framework-check/framework.db \
             --manifest /tmp/kairos-framework-check/framework_manifest.json \
-            --verify-determinism
-          cmp /tmp/kairos-framework-check/framework.db kairos/kairos_harness/kairos/framework.db
+            --verify-determinism \
+            --compare-content-with kairos/kairos_harness/kairos/framework.db
       - name: Create fresh release-style archive
         run: |
           rm -rf /tmp/kairos-cold
