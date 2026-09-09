@@ -5,6 +5,7 @@ on:
     branches: [v3]
     paths:
       - scripts/apply_v3_step2_contract_patch.py
+      - scripts/fix_v3_step2_query_collision.py
       - .github/workflows/v3-step2-apply.yml
 
 permissions:
@@ -23,6 +24,8 @@ jobs:
           python-version: '3.12'
       - name: Apply committed framework contract patch
         run: python scripts/apply_v3_step2_contract_patch.py
+      - name: Disambiguate onboarding search ownership
+        run: python scripts/fix_v3_step2_query_collision.py
       - name: Rebuild deterministic framework search projection
         run: python scripts/build_framework_index.py --verify-determinism
       - name: Compile changed Python surfaces
