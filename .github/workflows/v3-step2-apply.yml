@@ -33,7 +33,7 @@ jobs:
       - name: Verify framework bootstrap contracts
         env:
           PYTHONPATH: kairos/kairos_harness
-        run: python -m unittest kairos.kairos_harness.tests.test_framework_bootstrap -v
+        run: python -m unittest discover -s kairos/kairos_harness/tests -p 'test_framework_bootstrap.py' -v
       - name: Commit framework contract and derived projection
         run: |
           git config user.name "Q86 v3 automation"
