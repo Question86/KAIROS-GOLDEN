@@ -1,49 +1,27 @@
-name: Apply v3 step1 Workshop integration
+name: V3 step1 Workshop integration gate
 
 on:
   push:
     branches: [v3]
-    paths:
-      - scripts/apply_v3_step1_engine_patch.py
-      - .github/workflows/v3-step1-apply.yml
+  pull_request:
+    branches: [v3]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply:
+  step1:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: v3
-          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Apply committed patch
-        run: python scripts/apply_v3_step1_engine_patch.py
       - name: Compile
         run: python -m compileall -q kickstart kairos/kairos_harness workshop/src
-      - name: Run kickstart tests
+      - name: Run full kickstart gate
         run: python -m unittest discover -s kickstart/tests -p 'test_*.py' -v
-      - name: Run Workshop tests
+      - name: Run full Workshop gate
         env:
           PYTHONPATH: workshop/src
         run: python -m unittest discover -s workshop/tests -p 'test_*.py' -v
-      - name: Commit generated integration changes
-        run: |
-          git config user.name "Q86 v3 automation"
-          git config user.email "113774086+Question86@users.noreply.github.com"
-          git add \
-            kickstart/universal.py \
-            kickstart/universal_workshop.py \
-            kickstart/tests/test_universal.py \
-            workshop/src/runtime_sync_workshop/corpus.py \
-            workshop/src/runtime_sync_workshop/engine.py
-          if git diff --cached --quiet; then
-            echo "No generated changes"
-          else
-            git commit -m "feat: generalize Workshop for universal source ecosystems"
-            git push origin HEAD:v3
-          fi
