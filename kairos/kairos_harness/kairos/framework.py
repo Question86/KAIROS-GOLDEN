@@ -10,7 +10,7 @@ from .search import search_database
 
 FRAMEWORK_WORKSPACE_ID = "KAIROS_FRAMEWORK"
 FRAMEWORK_INDEX_WORKSPACE_ID = "KAIROS_FRAMEWORK_INDEX"
-FRAMEWORK_VERSION = "0.1.0-alpha.2"
+FRAMEWORK_VERSION = "0.1.0-alpha.3"
 FRAMEWORK_DATABASE_NAME = "framework.db"
 FRAMEWORK_MANIFEST_NAME = "framework_manifest.json"
 
@@ -29,6 +29,7 @@ FRAMEWORK_DOCUMENT_PATHS: tuple[str, ...] = (
     "docs/OPERATING_MODEL.md",
     "docs/PORTABILITY_SCOPE.md",
     "docs/PROJECT_KICKSTART.md",
+    "docs/UNIVERSAL_ONBOARDING.md",
     "docs/WORKSHOP.md",
     "kairos/kairos_harness/docs/CONTEXT_HEADER_SPEC.md",
     "kairos/kairos_harness/docs/INGESTED_DOCUMENT_SPEC.md",
