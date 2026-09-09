@@ -5,6 +5,7 @@ on:
     branches: [v3]
     paths:
       - .github/workflows/v3-step2-gate.yml
+      - docs/V3_WORKLOG.md
       - docs/UNIVERSAL_ONBOARDING.md
       - docs/FRAMEWORK_BOOTSTRAP.md
       - docs/PROJECT_KICKSTART.md
