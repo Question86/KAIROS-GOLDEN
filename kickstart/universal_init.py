@@ -16,6 +16,7 @@ from .universal import (
     _SUFFIX_TO_SPEC,
     render_markdown_corpus,
 )
+from .universal_workshop import prepare_universal_workshop_binding, verify_universal_workshop_binding
 
 
 C_FAMILY_TRANSLATION_UNIT_SUFFIXES = frozenset({".c", ".cc", ".cpp", ".cxx", ".cu"})
@@ -152,10 +153,11 @@ def initialize_universal_markdown(
     workspace_id: str | None = None,
     project_spec: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Create the initial exact Markdown layer from an immutable project observation.
+    """Create and Workshop-bind the initial exact Markdown layer.
 
-    This is the initial-derivation exception to Workshop-only mutation. It writes only
-    the KAIROS workspace. The governed project_root is never modified.
+    Initial derivation is the sole non-Workshop Markdown creation phase. The governed
+    project is read-only throughout. After the returned corpus is sealed, all governed
+    source/Markdown mutations belong to Workshop transactions.
     """
     (
         issue_external_edit_permit,
@@ -174,7 +176,7 @@ def initialize_universal_markdown(
     if not project_root.is_dir():
         raise KickstartError("PROJECT_ROOT_INVALID", f"project_root is not a directory: {project_root}")
     if (workspace / ".kairos" / "universal-intake.json").exists():
-        raise KickstartError("PROJECT_ALREADY_BOUND", "workspace already contains universal intake authority")
+        raise KickstartError("PROJECT_ALREADY_BOUND", "workspace already contains universal intake provenance")
 
     if not (workspace / ".kairos" / "config.json").is_file():
         if workspace.exists() and any(workspace.iterdir()):
@@ -201,7 +203,7 @@ def initialize_universal_markdown(
 
     survey = survey_universal_sources(project_root, compile_commands=compile_commands)
     updated_at = utc_now()
-    documents = render_markdown_corpus(
+    base_documents = render_markdown_corpus(
         survey,
         workspace_id=workspace_id_actual,
         goal_id=goal_id,
@@ -209,6 +211,19 @@ def initialize_universal_markdown(
         task_id=task_id,
         updated_at=updated_at,
     )
+    binding = prepare_universal_workshop_binding(
+        project_root=project_root,
+        workspace=workspace,
+        survey=survey,
+        documents=base_documents,
+        compile_commands=compile_commands,
+        workspace_id=workspace_id_actual,
+        goal_id=goal_id,
+        milestone_id=milestone_id,
+        task_id=task_id,
+        updated_at=updated_at,
+    )
+    documents = binding.documents
     changed = sorted(documents)
     issue_external_edit_permit(
         workspace,
@@ -219,15 +234,16 @@ def initialize_universal_markdown(
     for relative, text in documents.items():
         atomic_write_text(workspace / relative, text)
 
-    authority = {
+    intake = {
         "schema": "kairos-universal-intake/v1",
-        "state": "markdown_materialized_pending_workshop_binding",
+        "snapshot_role": "initial_intake_provenance",
         "created_at": updated_at,
         "project_root": project_root.as_posix(),
         "workspace": workspace.as_posix(),
         "workspace_id": workspace_id_actual,
         "ecosystems": list(survey.ecosystems),
         "source_count": len(survey.sources),
+        "header_count": binding.header_count,
         "sources": [
             {
                 "path": source.relative_path,
@@ -240,28 +256,42 @@ def initialize_universal_markdown(
         ],
         "markers": {key: list(value) for key, value in survey.markers.items()},
         "claim_boundary": (
-            "Initial intake proves exact observed source membership and bytes. It does not infer dynamic imports, runtime reachability, "
-            "or build participation for static ecosystems. C-family translation-unit membership is compiler-backed."
+            "This immutable receipt describes the initial observed source snapshot. It is provenance, not a claim that later Workshop source bytes remain equal to intake bytes. "
+            "Static ecosystems do not gain invented dynamic-import/build semantics; C-family translation-unit/header membership remains compiler-backed."
         ),
         "mutation_boundary": (
-            "project_root was read-only during this derivation. After seal, governed project and Markdown mutations must occur only through Workshop transactions."
+            "project_root was read-only during initial derivation. After seal, governed source, build files and Markdown may advance only through verified Workshop transactions."
         ),
     }
-    atomic_write_json(workspace / ".kairos" / "universal-intake.json", authority)
+    atomic_write_json(workspace / ".kairos" / "universal-intake.json", intake)
+
     heartbeat = run_heartbeat(
         workspace,
         requested_mode="work",
         changed_paths=changed,
         trigger="universal-project-kickstart",
     )
+    if not heartbeat.get("verified"):
+        raise KickstartError("UNIVERSAL_INTAKE_HEARTBEAT_UNVERIFIED", "initial universal Markdown promotion did not verify", details=heartbeat)
+
+    corpus = verify_universal_workshop_binding(binding.config_path)
+    if not corpus.get("verified"):
+        raise KickstartError(
+            "UNIVERSAL_WORKSHOP_BINDING_UNVERIFIED",
+            "universal intake materialized but Workshop corpus parity failed",
+            details=corpus.get("issues", []),
+        )
     return {
         "schema": "kairos-universal-intake-result/v1",
         "workspace": workspace.as_posix(),
         "project_root": project_root.as_posix(),
         "ecosystems": list(survey.ecosystems),
         "sources": len(survey.sources),
+        "headers": binding.header_count,
         "markdown_documents": len(documents),
-        "authority": str(workspace / ".kairos" / "universal-intake.json"),
+        "intake_provenance": str(workspace / ".kairos" / "universal-intake.json"),
+        "workshop_config": str(binding.config_path),
         "heartbeat": heartbeat,
-        "state": "MARKDOWN_MATERIALIZED_PENDING_WORKSHOP_BINDING",
+        "corpus": corpus,
+        "state": "VERIFIED_PENDING_SEAL",
     }
