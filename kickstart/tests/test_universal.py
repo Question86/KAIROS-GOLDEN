@@ -144,7 +144,9 @@ class UniversalMarkdownTests(unittest.TestCase):
             )
 
             self.assertEqual(source.read_bytes(), before)
-            self.assertEqual(result["state"], "MARKDOWN_MATERIALIZED_PENDING_WORKSHOP_BINDING")
+            self.assertEqual(result["state"], "VERIFIED_PENDING_SEAL")
+            self.assertTrue(result["corpus"]["verified"])
+            self.assertTrue(Path(result["workshop_config"]).is_file())
             self.assertTrue((workspace / ".kairos" / "universal-intake.json").is_file())
             self.assertTrue((workspace / "docs" / "PROJECT_SOURCE_INDEX.md").is_file())
             self.assertEqual(len(list((workspace / "code").glob("PROJECT_CODE_*.md"))), 1)

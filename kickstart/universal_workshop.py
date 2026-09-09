@@ -167,7 +167,7 @@ def _render_source_index(
 ) -> str:
     render_document = _load_renderer()
     source_rows = "\n".join(
-        f"| `{source.relative_path}` | `{source.ecosystem}` | `{source.sha256.upper()}` |"
+        f"| `{source.relative_path}` | `{source.ecosystem}` |"
         for source in survey.sources
     )
     workshop_rows = "\n".join(f"| `{source.relative_path}` | yes |" for source in survey.sources)
@@ -185,7 +185,7 @@ def _render_source_index(
         "workspace": workspace_id,
         "route": f"{workspace_id}/PROJECT_SOURCE_INDEX",
         "updated_at": updated_at,
-        "capsule": "Exact universal source membership with ecosystem classification, hashes and compiler-backed C-family header closure.",
+        "capsule": "Exact universal source membership with ecosystem classification and compiler-backed C-family header closure.",
         "claim_boundary": "Static ecosystems prove observed file membership only. C-family source/header reachability is additionally compiler-backed. No dynamic import or runtime reachability is inferred.",
         "entities": ["PROJECT_SOURCE_INDEX", *survey.ecosystems, "KAIROS"],
         "facets": ["ground-truth", "universal-intake", "source-membership", "provenance"],
@@ -207,8 +207,8 @@ def _render_source_index(
         + workshop_rows
         + "\n\n**End of governed source membership\n\n"
         "### 2.7 End of governed source membership\n\n"
-        "### Exact source hashes\n\n"
-        "| Source | Ecosystem | SHA-256 |\n|---|---|---|\n"
+        "### Ecosystem classification\n\n"
+        "| Source | Ecosystem |\n|---|---|\n"
         + source_rows
     )
     return render_document(metadata, "PROJECT SOURCE INDEX", [

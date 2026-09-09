@@ -765,7 +765,16 @@ def header_ownership(
     any_re = re.compile(r'(?m)^\s*#\s*include\s+([^\n]+)')
     codebase = config.codebase_root.resolve()
     queue: list[tuple[Path, str, dict[str, Any]]] = []
+    ecosystem_map = config.raw.get("source_ecosystems") or {}
+    if not isinstance(ecosystem_map, dict):
+        raise WorkshopError("CONFIG_INVALID", "source_ecosystems must map governed source paths to ecosystem names")
     for relative in translation_units:
+        # Legacy compiler-backed workspaces predate source_ecosystems and are all
+        # C-family. Universal workspaces must never run a C preprocessor scanner
+        # over Python/Rust/JS/etc. where '# include' or similar text can be a
+        # comment/string rather than preprocessor syntax.
+        if ecosystem_map and str(ecosystem_map.get(relative, "")) != "c_family":
+            continue
         logical = (codebase / relative).resolve()
         for variant in _translation_unit_include_variants(config, relative):
             queue.append((logical, relative, variant))

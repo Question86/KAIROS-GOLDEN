@@ -320,10 +320,11 @@ def render_source_blueprint(
         f'ecosystem = "{source.ecosystem}"',
         f'generated_at = {json.dumps(updated_at)}',
     ))
+    source_authority = "compiler_backed" if source.ecosystem == "c_family" else "static_source_membership"
     sections = [
         {"id": "s-purpose", "title": "PURPOSE", "capsule": "Exact initial source mirror.", "content": f"The governed source file is `{source.relative_path}`."},
         {"id": "s-mapping", "title": "SOURCE MAPPING", "capsule": "Path, ecosystem and exact byte facts are bound without semantic inference.", "content": mapping},
-        {"id": "s-boundary", "title": "AUTHORITY BOUNDARY", "capsule": "Initial membership is static for this ecosystem; build/runtime semantics are not invented.", "content": f"- Ecosystem: `{source.ecosystem}`\n- Authority: `static_source_membership`\n- SHA-256: `{source.sha256.upper()}`"},
+        {"id": "s-boundary", "title": "AUTHORITY BOUNDARY", "capsule": "Initial membership is explicit and ecosystem-bounded; build/runtime semantics are not invented.", "content": f"- Ecosystem: `{source.ecosystem}`\n- Authority: `{source_authority}`\n- SHA-256: `{source.sha256.upper()}`"},
         {"id": "s-source-ledger", "title": "SOURCE LEDGER", "capsule": "Verbatim numbered source evidence.", "content": "### HEADER 0 LINES\n~~~text\n~~~\n\n### SOURCE " + str(len(lines)) + " LINES\n~~~text\n" + _ledger_rows(lines) + "\n~~~\n\nEND OF BLUEPRINT"},
     ]
     return render_document(metadata, f"{artifact_id}: {source.relative_path}", sections)

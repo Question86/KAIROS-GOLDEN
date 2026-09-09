@@ -798,13 +798,22 @@ class WorkshopEngine:
             header_changed = bool(baseline_header and work_header and baseline_header.read_bytes() != work_header.read_bytes())
             semantic_changed = semantic_document_hash(baseline_blueprint) != semantic_document_hash(work_blueprint)
             code_changed = source_changed or header_changed
-            token_changed = bool(
-                mapped_work_source
-                and cpp_token_signature(baseline_source.read_bytes())
-                != cpp_token_signature(mapped_work_source.read_bytes())
-            )
-            if baseline_header and work_header:
-                token_changed = token_changed or cpp_token_signature(baseline_header.read_bytes()) != cpp_token_signature(work_header.read_bytes())
+            ecosystem_map = self.config.raw.get("source_ecosystems") or {}
+            ecosystem = str(ecosystem_map.get(source, "c_family")) if isinstance(ecosystem_map, dict) else "c_family"
+            if ecosystem == "c_family":
+                token_changed = bool(
+                    mapped_work_source
+                    and cpp_token_signature(baseline_source.read_bytes())
+                    != cpp_token_signature(mapped_work_source.read_bytes())
+                )
+                if baseline_header and work_header:
+                    token_changed = token_changed or cpp_token_signature(baseline_header.read_bytes()) != cpp_token_signature(work_header.read_bytes())
+            else:
+                # Universal static blueprints intentionally make no semantic claim
+                # beyond exact bytes/ledger. A language-agnostic C++ lexer must not
+                # manufacture a semantic-metadata obligation for Python/Rust/JS/etc.
+                # Their exact mechanical mirror still advances on every byte change.
+                token_changed = False
             changed = code_changed or semantic_changed
             review = reviews.get(source)
             if changed:
