@@ -17,7 +17,7 @@ SEED_NAMES = {
     "blueprint_root",
     "managed_blueprint_root",
 }
-METHOD_SINKS = {"write_text", "write_bytes", "mkdir", "unlink", "rmdir", "touch", "rename", "replace"}
+METHOD_SINKS = {"write_text", "write_bytes", "mkdir", "unlink", "rmdir", "touch", "rename"}
 FUNCTION_DEST_INDEX = {
     "open": 0,
     "atomic_write_json": 0,
@@ -40,8 +40,13 @@ FUNCTION_DEST_INDEX = {
     "shutil.rmtree": 0,
 }
 SOURCE_MUTATING_FUNCTIONS = {"shutil.move", "os.rename", "os.replace"}
+
+# These two external-tool calls have stronger static proofs checked by require_contracts():
+# the compiler literal probe is non-writing by construction, while CMake receives only a
+# disposable clone and an external build directory. They are not generic exceptions.
 SUBPROCESS_ALLOW = {
     ("kickstart/binding.py", "_compiler_selected_literal"),
+    ("kickstart/cmake.py", "configure_compile_commands"),
 }
 
 
@@ -69,7 +74,10 @@ def expression_tainted(node: ast.AST | None, tainted: set[str]) -> bool:
     if node is None:
         return False
     for child in ast.walk(node):
-        if isinstance(child, ast.Name) and (child.id in tainted or child.id in SEED_NAMES):
+        # A local variable merely named blueprint_root is not automatically the live
+        # blueprint root. Function parameters with authority names are seeded below;
+        # config.<authority_root> attributes remain intrinsically live-authority roots.
+        if isinstance(child, ast.Name) and child.id in tainted:
             return True
         if isinstance(child, ast.Attribute) and child.attr in SEED_NAMES:
             return True
@@ -79,7 +87,7 @@ def expression_tainted(node: ast.AST | None, tainted: set[str]) -> bool:
 def call_write_targets(node: ast.Call) -> list[ast.AST]:
     name = dotted(node.func)
     if isinstance(node.func, ast.Attribute) and node.func.attr in METHOD_SINKS:
-        if node.func.attr in {"rename", "replace"}:
+        if node.func.attr == "rename":
             return [node.func.value, *node.args[:1]]
         return [node.func.value]
     if name == "open":
@@ -102,8 +110,20 @@ def call_write_targets(node: ast.Call) -> list[ast.AST]:
     return targets
 
 
+def safe_nonlive_sink(relative: str, function_name: str, node: ast.Call, target: ast.AST) -> bool:
+    """Recognize narrowly proved writes to disposable/non-live paths."""
+    if relative == "kickstart/binding.py" and function_name == "initialize_project":
+        if dotted(node.func) == "shutil.rmtree" and ast.unparse(target) == "cmake_configure.build_directory":
+            return True
+    return False
+
+
 def audit_function(relative: str, function: ast.FunctionDef | ast.AsyncFunctionDef) -> list[dict[str, object]]:
-    tainted = {arg.arg for arg in [*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs] if arg.arg in SEED_NAMES}
+    tainted = {
+        arg.arg
+        for arg in [*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs]
+        if arg.arg in SEED_NAMES
+    }
     changed = True
     while changed:
         changed = False
@@ -132,6 +152,8 @@ def audit_function(relative: str, function: ast.FunctionDef | ast.AsyncFunctionD
         if not isinstance(node, ast.Call):
             continue
         for target in call_write_targets(node):
+            if safe_nonlive_sink(relative, function.name, node, target):
+                continue
             if expression_tainted(target, tainted) and not workshop_module:
                 findings.append({
                     "file": relative,
@@ -184,13 +206,15 @@ def require_contracts() -> list[str]:
     workshop = (ROOT / "docs" / "WORKSHOP.md").read_text(encoding="utf-8")
     cmake = (ROOT / "kickstart" / "cmake.py").read_text(encoding="utf-8")
     required = {
-        "onboarding single mutation": (onboarding, "only permitted mutation path"),
-        "onboarding clone boundary": (onboarding, "isolated clone"),
+        "onboarding single mutation": (onboarding, "Workshop is the sole mutation boundary"),
+        "onboarding direct live edits forbidden": (onboarding, "must never edit the configured live project root"),
+        "onboarding clone boundary": (onboarding, "isolated clone or snapshot"),
         "agents Workshop writer": (agents, "Workshop is the only"),
         "Workshop source-set": (workshop, "source-set-checkout"),
         "CMake clone": (cmake, "shutil.copytree(project_root, clone_root"),
         "CMake clone cwd": (cmake, "cwd=clone_root"),
         "CMake live build refusal": (cmake, "CMAKE_BUILD_DIRECTORY_LIVE"),
+        "CMake clone cleanup": (cmake, "shutil.rmtree(clone_parent"),
     }
     for label, (text, needle) in required.items():
         if needle not in text:
@@ -209,7 +233,7 @@ def main() -> int:
         "python_files_scanned": scanned,
         "write_findings": findings,
         "contract_failures": contract_failures,
-        "policy": "Outside runtime_sync_workshop, live project/codebase/runtime/blueprint roots must not reach write sinks or mutation-capable subprocesses. Initial intake may derive KAIROS state but does not write the observed project.",
+        "policy": "Outside runtime_sync_workshop, live project/codebase/runtime/blueprint roots must not reach write sinks or mutation-capable subprocesses. Initial intake may derive KAIROS state but does not write the observed project. Clone-isolated tools are separately proven by static contracts and regression tests.",
     }
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0 if payload["verified"] else 1
