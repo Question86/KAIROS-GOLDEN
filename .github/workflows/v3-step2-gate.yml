@@ -10,6 +10,7 @@ on:
       - docs/PROJECT_KICKSTART.md
       - docs/WORKSHOP.md
       - AGENTS.md
+      - kickstart/universal_init.py
       - kairos/kairos_harness/kairos/framework.py
       - kairos/kairos_harness/kairos/framework.db
       - kairos/kairos_harness/kairos/framework_manifest.json
