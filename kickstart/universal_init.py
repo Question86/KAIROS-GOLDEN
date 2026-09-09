@@ -283,6 +283,7 @@ def initialize_universal_markdown(
         )
     return {
         "schema": "kairos-universal-intake-result/v1",
+        "verified": True,
         "workspace": workspace.as_posix(),
         "project_root": project_root.as_posix(),
         "ecosystems": list(survey.ecosystems),
