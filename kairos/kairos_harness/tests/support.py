@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import tempfile
 import unittest
 import uuid
 from pathlib import Path
@@ -9,14 +10,18 @@ from kairos.util import atomic_write_json, read_json
 from kairos.workspace import initialize_workspace
 
 
-TEST_ROOT = Path(__file__).resolve().parent / "_tmp"
+# Test artifacts must never be created below the installed/source package.  A
+# checkout may be read-only, protected by Windows Defender/Application Control,
+# or shared by another user.  tempfile.TemporaryDirectory also gives each test
+# process an isolated root without relying on repository ACLs.
+_TEST_ROOT = tempfile.TemporaryDirectory(prefix="kairos-harness-tests-")
+TEST_ROOT = Path(_TEST_ROOT.name)
 
 
 class WorkspaceTestCase(unittest.TestCase):
     workspace: Path
 
     def setUp(self) -> None:
-        TEST_ROOT.mkdir(parents=True, exist_ok=True)
         self.workspace = TEST_ROOT / f"kairos-test-{uuid.uuid4().hex}"
         self.workspace.mkdir()
         initialize_workspace(self.workspace, workspace_id="KAIROS_TEST")

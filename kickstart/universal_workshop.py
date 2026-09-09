@@ -11,6 +11,7 @@ from typing import Any
 
 from .binding import _resolve_include_closure
 from .errors import KickstartError
+from .portable import portable_path, portable_probe_argv, reject_link_components
 from .survey import compiler_context_sha256, compiler_probe_argv, survey_compile_commands
 from .universal import UniversalSurvey
 
@@ -237,7 +238,7 @@ def _c_family_evidence(project_root: Path, compile_commands: Path | None):
         return None, {}
     if compile_commands is None:
         raise KickstartError("C_FAMILY_COMPILER_AUTHORITY_REQUIRED", "C-family source exists but compiler authority was not supplied")
-    survey = survey_compile_commands(compile_commands.resolve(), project_root, source_kind="compile_commands")
+    survey = survey_compile_commands(compile_commands, project_root, source_kind="compile_commands")
     headers, unresolved = _resolve_include_closure(project_root, survey)
     if unresolved:
         raise KickstartError(
@@ -261,7 +262,11 @@ def prepare_universal_workshop_binding(
     task_id: str,
     updated_at: str,
 ) -> UniversalWorkshopBinding:
+    project_root = Path(project_root)
+    reject_link_components(project_root, label="project root")
     project_root = project_root.resolve()
+    workspace = Path(workspace)
+    reject_link_components(workspace, label="KAIROS workspace")
     workspace = workspace.resolve()
     c_survey, headers = _c_family_evidence(project_root, compile_commands)
     header_owners = {relative: sorted(owners) for relative, (_, owners) in headers.items()}
@@ -301,32 +306,50 @@ def prepare_universal_workshop_binding(
     retained_compile: Path | None = None
     if c_survey is not None and compile_commands is not None:
         retained_compile = intake_dir / "compile_commands.json"
-        _atomic_bytes(retained_compile, compile_commands.resolve().read_bytes())
+        _atomic_bytes(retained_compile, Path(compile_commands).read_bytes())
         machine_authorities.append("project-intake/compile_commands.json")
 
-    include_roots = [root.as_posix() for root in c_survey.include_roots] if c_survey is not None else []
+    config_path = workspace / ".kairos" / "workshop.config.json"
+    machine_root = config_path.parent.resolve()
+    movable_roots = (project_root.resolve(), workspace.resolve())
+    serialize_path = lambda value: portable_path(
+        value, base=machine_root, relative_roots=movable_roots
+    )
+
+    def serialize_probe(value: tuple[str, ...]) -> list[str]:
+        return list(
+            portable_probe_argv(value, base=machine_root, relative_roots=movable_roots)
+        )
+
+    include_roots = [serialize_path(root) for root in c_survey.include_roots] if c_survey is not None else []
     include_sequences: dict[str, list[list[str]]] = {}
     include_variants: dict[str, list[dict[str, Any]]] = {}
     compiler_probes: dict[str, list[dict[str, Any]]] = {}
     if c_survey is not None:
         for unit in c_survey.units:
             include_sequences[unit.relative_path] = [
-                [root.as_posix() for root in sequence] for sequence in unit.include_root_sequences
+                [serialize_path(root) for root in sequence] for sequence in unit.include_root_sequences
             ]
             variant_rows: list[dict[str, Any]] = []
             probe_rows: list[dict[str, Any]] = []
             for variant in unit.variants:
                 probe = compiler_probe_argv(variant.argv, directory=variant.directory, project_root=project_root)
                 row = {
-                    "quote_roots": [root.as_posix() for root in variant.quote_include_roots],
-                    "angle_roots": [root.as_posix() for root in variant.angle_include_roots],
-                    "idirafter_roots": [root.as_posix() for root in variant.idirafter_roots],
-                    "compiler_probe": ({"argv": list(probe), "directory": variant.directory.as_posix()} if probe else None),
+                    "quote_roots": [serialize_path(root) for root in variant.quote_include_roots],
+                    "angle_roots": [serialize_path(root) for root in variant.angle_include_roots],
+                    "idirafter_roots": [serialize_path(root) for root in variant.idirafter_roots],
+                    "compiler_probe": (
+                        {"argv": serialize_probe(probe), "directory": serialize_path(variant.directory)}
+                        if probe else None
+                    ),
                 }
                 if row not in variant_rows:
                     variant_rows.append(row)
                 if probe:
-                    probe_row = {"argv": list(probe), "directory": variant.directory.as_posix()}
+                    probe_row = {
+                        "argv": serialize_probe(probe),
+                        "directory": serialize_path(variant.directory),
+                    }
                     if probe_row not in probe_rows:
                         probe_rows.append(probe_row)
             include_variants[unit.relative_path] = variant_rows
@@ -336,17 +359,18 @@ def prepare_universal_workshop_binding(
     config = {
         "schema": "runtime-sync-workshop-config/v1",
         "membership_authority_kind": "universal-static-plus-compiler",
-        "codebase_root": project_root.as_posix(),
-        "runtime_root": project_root.as_posix(),
-        "cmake_file": membership_path.as_posix(),
+        "path_resolution": "config-directory-relative-v1",
+        "codebase_root": serialize_path(project_root),
+        "runtime_root": serialize_path(project_root),
+        "cmake_file": serialize_path(membership_path),
         "cmake_source_sets": ["KAIROS_TRANSLATION_UNITS"],
         "cmake_extra_sources": [],
-        "dataflow_index": (workspace / "docs" / "PROJECT_SOURCE_INDEX.md").as_posix(),
-        "blueprint_root": blueprint_root.as_posix(),
-        "managed_blueprint_root": (workspace / "code").as_posix(),
-        "kairos_workspace": workspace.as_posix(),
-        "kairos_harness": (_canonical_root() / "kairos" / "kairos_harness").as_posix(),
-        "kairos_database": (workspace / ".kairos" / "kairos.db").as_posix(),
+        "dataflow_index": serialize_path(workspace / "docs" / "PROJECT_SOURCE_INDEX.md"),
+        "blueprint_root": serialize_path(blueprint_root),
+        "managed_blueprint_root": serialize_path(workspace / "code"),
+        "kairos_workspace": serialize_path(workspace),
+        "kairos_harness": "@bundled",
+        "kairos_database": serialize_path(workspace / ".kairos" / "kairos.db"),
         "include_roots": include_roots,
         "translation_unit_include_roots": include_sequences,
         "translation_unit_include_variants": include_variants,
@@ -375,7 +399,6 @@ def prepare_universal_workshop_binding(
     }
     if c_survey is not None:
         config["compiler_context_sha256"] = compiler_context_sha256(c_survey, project_root)
-    config_path = workspace / ".kairos" / "workshop.config.json"
     _atomic_json(config_path, config)
     return UniversalWorkshopBinding(
         documents=dict(sorted(rendered.items())),

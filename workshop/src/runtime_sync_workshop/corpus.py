@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import ntpath
 import re
 import stat
 import sqlite3
@@ -18,6 +19,7 @@ from .util import (
     normalized_text,
     package_hash,
     read_json,
+    reject_link_components,
     relative_posix,
     sha256_bytes,
     sha256_text,
@@ -180,23 +182,138 @@ def dependent_test_inventory(config: WorkshopConfig) -> dict[str, Any]:
     return result
 
 
-def _absolute(value: Any, name: str) -> Path:
+def _path_is_absolute(value: str) -> bool:
+    """Recognize both the host platform's and Windows' absolute syntax."""
+
+    return Path(value).is_absolute() or ntpath.isabs(value)
+
+
+def _path_is_drive_relative(value: str) -> bool:
+    """Reject ``C:relative`` paths, whose meaning depends on process state."""
+
+    drive, _ = ntpath.splitdrive(value)
+    return bool(drive) and not _path_is_absolute(value)
+
+
+def _configured_path(value: Any, name: str, *, base: Path) -> Path:
     if not isinstance(value, str) or not value.strip():
-        raise WorkshopError("CONFIG_INVALID", f"{name} must be a non-empty absolute path")
-    path = Path(value).resolve()
-    if not path.is_absolute():
-        raise WorkshopError("CONFIG_INVALID", f"{name} must be absolute: {value}")
-    return path
+        raise WorkshopError("CONFIG_INVALID", f"{name} must be a non-empty absolute or config-relative path")
+    if _path_is_drive_relative(value):
+        raise WorkshopError("CONFIG_INVALID", f"{name} must not use a drive-relative path: {value}")
+    raw = Path(value)
+    candidate = raw if _path_is_absolute(value) else base / raw
+    reject_link_components(candidate, label=name)
+    try:
+        resolved = candidate.resolve()
+    except (OSError, ValueError) as exc:
+        raise WorkshopError("PATH_UNVERIFIABLE", f"cannot resolve {name}: {value}") from exc
+    reject_link_components(resolved, label=name)
+    return resolved
+
+
+def _bundled_harness_path() -> Path:
+    return Path(__file__).resolve().parents[3] / "kairos" / "kairos_harness"
+
+
+def _installed_harness_path() -> Path | None:
+    try:
+        import importlib.util
+
+        spec = importlib.util.find_spec("kairos")
+    except (ImportError, ModuleNotFoundError):
+        return None
+    if spec is None or not spec.submodule_search_locations:
+        return None
+    package = Path(next(iter(spec.submodule_search_locations))).resolve()
+    return package.parent
+
+
+def _harness_path(value: Any, *, base: Path) -> Path:
+    if value == "@bundled":
+        candidate = _bundled_harness_path()
+    elif value == "@installed":
+        candidate = _installed_harness_path()
+        if candidate is None:
+            raise WorkshopError(
+                "CONFIG_PATH_MISSING",
+                "kairos_harness=@installed but the kairos harness package is not installed",
+            )
+    else:
+        return _configured_path(value, "kairos_harness", base=base)
+    reject_link_components(candidate, label="kairos_harness")
+    return candidate.resolve()
+
+
+def _machine_relative_path(value: Any, name: str, *, base: Path) -> Path:
+    if not isinstance(value, str) or not value.strip():
+        raise WorkshopError("CONFIG_INVALID", f"{name} must be a non-empty machine-root-relative path")
+    normalized = value.replace("\\", "/")
+    parts = Path(normalized).parts
+    if _path_is_absolute(value) or _path_is_drive_relative(value) or ".." in parts:
+        raise WorkshopError("CONFIG_INVALID", f"{name} must stay below the config directory: {value}")
+    candidate = _configured_path(normalized, name, base=base)
+    try:
+        candidate.relative_to(base.resolve())
+    except ValueError as exc:
+        raise WorkshopError("CONFIG_INVALID", f"{name} escapes the config directory: {value}") from exc
+    return candidate
+
+
+def _config_value_path(config: WorkshopConfig, value: Any, name: str) -> Path:
+    # A few pure include-authority callers use a lightweight namespace instead
+    # of a fully loaded WorkshopConfig.  Their codebase root is the only safe
+    # available base; real configs always provide machine_root.
+    base_value = getattr(config, "machine_root", None)
+    if base_value is None:
+        base_value = config.codebase_root
+    base = Path(base_value).resolve()
+    return _configured_path(value, name, base=base)
+
+
+def _safe_authority_relative(config: WorkshopConfig, value: Any, *, label: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise WorkshopError("AUTHORITY_PATH_UNSAFE", f"{label} must be a non-empty project-relative path")
+    normalized = value.replace("\\", "/")
+    parts = Path(normalized).parts
+    if (
+        _path_is_absolute(normalized)
+        or _path_is_drive_relative(normalized)
+        or ".." in parts
+    ):
+        raise WorkshopError("AUTHORITY_PATH_UNSAFE", f"{label} escapes the governed project: {value}")
+    codebase_value = getattr(config, "codebase_root", None)
+    runtime_value = getattr(config, "runtime_root", codebase_value)
+    if codebase_value is None or runtime_value is None:
+        # Lightweight authority-only test/caller namespaces predate the full
+        # WorkshopConfig. They can still receive syntax checks, while a real
+        # loaded config always supplies both containment roots below.
+        return normalized
+    candidate = Path(codebase_value) / Path(normalized)
+    reject_link_components(candidate, label=label)
+    try:
+        resolved = candidate.resolve()
+        resolved.relative_to(Path(runtime_value))
+    except (OSError, ValueError) as exc:
+        raise WorkshopError("AUTHORITY_PATH_UNSAFE", f"{label} is outside the governed runtime: {value}") from exc
+    return normalized
 
 
 def load_config(path: Path) -> WorkshopConfig:
-    path = path.resolve()
+    path = Path(path)
+    reject_link_components(path, label="Workshop config")
+    try:
+        path = path.resolve(strict=True)
+    except (OSError, ValueError) as exc:
+        raise WorkshopError("CONFIG_PATH_MISSING", f"Workshop config is not readable: {path}") from exc
     raw = read_json(path)
     if not isinstance(raw, dict) or raw.get("schema") != "runtime-sync-workshop-config/v1":
         raise WorkshopError("CONFIG_INVALID", f"unsupported workshop config: {path}")
     machine_root = path.parent.resolve()
-    codebase_root = _absolute(raw.get("codebase_root"), "codebase_root")
-    runtime_root = _absolute(raw.get("runtime_root"), "runtime_root")
+    path_resolution = raw.get("path_resolution")
+    if path_resolution not in (None, "config-directory-relative-v1"):
+        raise WorkshopError("CONFIG_INVALID", f"unsupported path resolution contract: {path_resolution}")
+    codebase_root = _configured_path(raw.get("codebase_root"), "codebase_root", base=machine_root)
+    runtime_root = _configured_path(raw.get("runtime_root"), "runtime_root", base=machine_root)
     from .util import set_source_prefix
 
     try:
@@ -204,8 +321,12 @@ def load_config(path: Path) -> WorkshopConfig:
     except ValueError as exc:
         raise WorkshopError("CONFIG_INVALID", "runtime_root must be inside codebase_root") from exc
     set_source_prefix(source_relative)
-    state_directory = machine_root / str(raw.get("state_directory", ".state"))
-    transaction_directory = machine_root / str(raw.get("transaction_directory", "transactions"))
+    state_directory = _machine_relative_path(
+        raw.get("state_directory", ".state"), "state_directory", base=machine_root
+    )
+    transaction_directory = _machine_relative_path(
+        raw.get("transaction_directory", "transactions"), "transaction_directory", base=machine_root
+    )
     additional = raw.get("additional_header_owners", {})
     if not isinstance(additional, dict) or any(not isinstance(k, str) or not isinstance(v, str) for k, v in additional.items()):
         raise WorkshopError("CONFIG_INVALID", "additional_header_owners must map header paths to blueprint filenames")
@@ -233,7 +354,9 @@ def load_config(path: Path) -> WorkshopConfig:
     if not isinstance(machine_authorities, list) or any(
         not isinstance(value, str)
         or not value.strip()
-        or Path(value).is_absolute()
+        or _path_is_absolute(value)
+        or _path_is_drive_relative(value)
+        or ".." in Path(value.replace("\\", "/")).parts
         for value in machine_authorities
     ):
         raise WorkshopError(
@@ -254,15 +377,15 @@ def load_config(path: Path) -> WorkshopConfig:
         machine_root=machine_root,
         codebase_root=codebase_root,
         runtime_root=runtime_root,
-        cmake_file=_absolute(raw.get("cmake_file"), "cmake_file"),
+        cmake_file=_configured_path(raw.get("cmake_file"), "cmake_file", base=machine_root),
         cmake_source_sets=tuple(str(value) for value in raw.get("cmake_source_sets", [])),
         cmake_extra_sources=tuple(str(value).replace("\\", "/") for value in raw.get("cmake_extra_sources", [])),
-        dataflow_index=_absolute(raw.get("dataflow_index"), "dataflow_index"),
-        blueprint_root=_absolute(raw.get("blueprint_root"), "blueprint_root"),
-        managed_blueprint_root=_absolute(raw.get("managed_blueprint_root"), "managed_blueprint_root"),
-        kairos_workspace=_absolute(raw.get("kairos_workspace"), "kairos_workspace"),
-        kairos_harness=_absolute(raw.get("kairos_harness"), "kairos_harness"),
-        kairos_database=_absolute(raw.get("kairos_database"), "kairos_database"),
+        dataflow_index=_configured_path(raw.get("dataflow_index"), "dataflow_index", base=machine_root),
+        blueprint_root=_configured_path(raw.get("blueprint_root"), "blueprint_root", base=machine_root),
+        managed_blueprint_root=_configured_path(raw.get("managed_blueprint_root"), "managed_blueprint_root", base=machine_root),
+        kairos_workspace=_configured_path(raw.get("kairos_workspace"), "kairos_workspace", base=machine_root),
+        kairos_harness=_harness_path(raw.get("kairos_harness"), base=machine_root),
+        kairos_database=_configured_path(raw.get("kairos_database"), "kairos_database", base=machine_root),
         include_roots=(),
         expected_translation_units=int(raw.get("expected_translation_units", 0)),
         blueprint_ignore=frozenset(str(value) for value in raw.get("blueprint_ignore", [])),
@@ -274,8 +397,8 @@ def load_config(path: Path) -> WorkshopConfig:
             str(k).replace("\\", "/"): str(v)
             for k, v in header_only.items()
         },
-        state_directory=state_directory.resolve(),
-        transaction_directory=transaction_directory.resolve(),
+        state_directory=state_directory,
+        transaction_directory=transaction_directory,
         raw=raw,
     )
     configured_include_roots = raw.get("include_roots", [])
@@ -283,10 +406,10 @@ def load_config(path: Path) -> WorkshopConfig:
         not isinstance(value, str) or not value.strip()
         for value in configured_include_roots
     ):
-        raise WorkshopError("CONFIG_INVALID", "include_roots must be an array of absolute directories")
+        raise WorkshopError("CONFIG_INVALID", "include_roots must be an array of config-relative or absolute directories")
     include_roots: list[Path] = []
     for value in configured_include_roots:
-        include_root = _absolute(value, "include_roots entry")
+        include_root = _configured_path(value, "include_roots entry", base=machine_root)
         try:
             include_root.relative_to(config.codebase_root)
         except ValueError as exc:
@@ -325,14 +448,7 @@ def load_config(path: Path) -> WorkshopConfig:
                 f"configured auxiliary document is missing: {path}",
             )
     for relative in config.machine_authority_files:
-        candidate = (config.machine_root / relative).resolve()
-        try:
-            candidate.relative_to(config.machine_root)
-        except ValueError as exc:
-            raise WorkshopError(
-                "CONFIG_INVALID",
-                f"machine authority escapes the Workshop root: {relative}",
-            ) from exc
+        candidate = _machine_relative_path(relative, "machine authority", base=config.machine_root)
         if not candidate.is_file():
             raise WorkshopError(
                 "CONFIG_PATH_MISSING",
@@ -372,7 +488,10 @@ def cmake_membership(config: WorkshopConfig) -> list[str]:
             raise WorkshopError("CMAKE_SOURCE_SET_EMPTY", f"CMake source set contains no translation units: {variable}")
         values.extend(tokens)
     values.extend(config.cmake_extra_sources)
-    normalized = [value.replace("\\", "/") for value in values]
+    normalized = [
+        _safe_authority_relative(config, value, label="CMake translation unit")
+        for value in values
+    ]
     duplicates = sorted({value for value in normalized if normalized.count(value) > 1})
     if duplicates:
         raise WorkshopError("CMAKE_SOURCE_DUPLICATE", "CMake membership contains duplicate translation units", details=duplicates)
@@ -420,7 +539,7 @@ def dataflow_membership(config: WorkshopConfig) -> list[str]:
             if prefix is None:
                 raise WorkshopError("DATAFLOW_PATH_AMBIGUOUS", f"cannot resolve DATAFLOW source row without directory context: {line}")
             source = prefix + source
-        values.append(source)
+        values.append(_safe_authority_relative(config, source, label="DATAFLOW translation unit"))
     duplicates = sorted({value for value in values if values.count(value) > 1})
     if duplicates:
         raise WorkshopError("DATAFLOW_SOURCE_DUPLICATE", "DATAFLOW membership contains duplicate translation units", details=duplicates)
@@ -436,10 +555,13 @@ def blueprint_inventory(config: WorkshopConfig) -> tuple[list[CorpusEntry], list
     ]
     for blueprint_path in candidates:
         try:
+            reject_link_components(blueprint_path, label="blueprint")
             document = parse_blueprint(blueprint_path)
             source_path: Path | None = None
             if document.source_path:
-                source_path = (config.codebase_root / document.source_path).resolve()
+                source_candidate = config.codebase_root / document.source_path
+                reject_link_components(source_candidate, label="mapped source")
+                source_path = source_candidate.resolve()
                 try:
                     source_path.relative_to(config.runtime_root)
                 except ValueError:
@@ -448,7 +570,9 @@ def blueprint_inventory(config: WorkshopConfig) -> tuple[list[CorpusEntry], list
                     raise WorkshopError("SOURCE_MISSING", f"mapped source is missing: {document.source_path}")
             header_path: Path | None = None
             if document.header_path:
-                header_path = (config.codebase_root / document.header_path).resolve()
+                header_candidate = config.codebase_root / document.header_path
+                reject_link_components(header_candidate, label="mapped header")
+                header_path = header_candidate.resolve()
                 try:
                     header_path.relative_to(config.runtime_root)
                 except ValueError:
@@ -467,6 +591,7 @@ def blueprint_inventory(config: WorkshopConfig) -> tuple[list[CorpusEntry], list
                     matches: list[Path] = []
                     for suffix in sorted(config.header_extensions):
                         candidate = source_base.with_suffix(suffix)
+                        reject_link_components(candidate, label="inferred header")
                         if candidate.is_file() and logical_lines(candidate.read_bytes())[0] == header_ledger:
                             matches.append(candidate.resolve())
                     if len(matches) == 1:
@@ -480,6 +605,7 @@ def blueprint_inventory(config: WorkshopConfig) -> tuple[list[CorpusEntry], list
                             details=[str(value) for value in matches],
                         )
             managed = config.managed_blueprint_root / blueprint_path.name
+            reject_link_components(managed, label="managed blueprint")
             if not managed.is_file():
                 raise WorkshopError("MANAGED_BLUEPRINT_MISSING", f"managed blueprint is missing: {managed}")
             entries.append(CorpusEntry(
@@ -543,6 +669,50 @@ def _resolve_include(config: WorkshopConfig, including: Path, include: str) -> P
     return None
 
 
+_PROBE_PATH_PAIRED = {
+    "-I", "-isystem", "-iquote", "-idirafter", "-isysroot",
+    "--sysroot", "-F", "-iframework", "-B", "--gcc-toolchain",
+}
+_PROBE_PATH_ATTACHED = (
+    "-I", "-isystem", "-iquote", "-idirafter", "--sysroot=",
+    "-isysroot", "-F", "-iframework", "-B", "--gcc-toolchain=",
+)
+
+
+def _expand_compiler_probe_argv(config: WorkshopConfig, argv: tuple[str, ...]) -> tuple[str, ...]:
+    """Expand relative path-valued probe arguments against the config directory."""
+
+    if not argv:
+        return tuple()
+    result: list[str] = [argv[0]]
+    values = list(argv[1:])
+
+    def expand(value: str) -> str:
+        if _path_is_absolute(value):
+            return Path(value).resolve().as_posix()
+        return _config_value_path(config, value, "compiler probe path").as_posix()
+
+    index = 0
+    while index < len(values):
+        token = values[index]
+        if token in _PROBE_PATH_PAIRED and index + 1 < len(values):
+            result.extend((token, expand(values[index + 1])))
+            index += 2
+            continue
+        matched = False
+        for prefix in _PROBE_PATH_ATTACHED:
+            if token.startswith(prefix) and len(token) > len(prefix):
+                separator = "=" if prefix.endswith("=") else ""
+                base_prefix = prefix[:-1] if separator else prefix
+                result.append(base_prefix + separator + expand(token[len(prefix):]))
+                matched = True
+                break
+        if not matched:
+            result.append(token)
+        index += 1
+    return tuple(result)
+
+
 def _translation_unit_include_sequences(config: WorkshopConfig, source_relative: str) -> tuple[tuple[Path, ...], ...]:
     """Legacy flat include-root representation retained for older workspaces."""
     mapping = config.raw.get("translation_unit_include_roots", {})
@@ -562,7 +732,7 @@ def _translation_unit_include_sequences(config: WorkshopConfig, source_relative:
                         "CONFIG_INVALID",
                         f"translation_unit_include_roots contains a non-path value: {source_relative}",
                     )
-                roots.append(Path(value).resolve())
+                roots.append(_config_value_path(config, value, "translation-unit include root"))
             sequence = tuple(roots)
             if sequence not in sequences:
                 sequences.append(sequence)
@@ -602,7 +772,8 @@ def _translation_unit_compiler_probes(
                 "CONFIG_INVALID",
                 f"invalid compiler probe declaration: {source_relative}",
             )
-        probe = (tuple(argv), Path(directory).resolve())
+        expanded_argv = _expand_compiler_probe_argv(config, tuple(argv))
+        probe = (expanded_argv, _config_value_path(config, directory, "compiler probe directory"))
         if probe not in probes:
             probes.append(probe)
     return tuple(probes)
@@ -630,7 +801,10 @@ def _translation_unit_include_variants(config: WorkshopConfig, source_relative: 
                 raw_roots = item.get(key, [])
                 if not isinstance(raw_roots, list) or any(not isinstance(value, str) or not value for value in raw_roots):
                     raise WorkshopError("CONFIG_INVALID", f"invalid {key} for {source_relative}")
-                parsed[key] = tuple(Path(value).resolve() for value in raw_roots)
+                parsed[key] = tuple(
+                    _config_value_path(config, value, f"{key} include root")
+                    for value in raw_roots
+                )
             raw_probe = item.get("compiler_probe")
             if raw_probe is None:
                 parsed["compiler_probe"] = None
@@ -645,7 +819,10 @@ def _translation_unit_include_variants(config: WorkshopConfig, source_relative: 
                     or not isinstance(directory, str) or not directory.strip()
                 ):
                     raise WorkshopError("CONFIG_INVALID", f"invalid compiler_probe for {source_relative}")
-                parsed["compiler_probe"] = (tuple(argv), Path(directory).resolve())
+                parsed["compiler_probe"] = (
+                    _expand_compiler_probe_argv(config, tuple(argv)),
+                    _config_value_path(config, directory, "compiler probe directory"),
+                )
             if parsed not in variants:
                 variants.append(parsed)
         return tuple(variants)
@@ -765,23 +942,47 @@ def header_ownership(
     any_re = re.compile(r'(?m)^\s*#\s*include\s+([^\n]+)')
     codebase = config.codebase_root.resolve()
     queue: list[tuple[Path, str, dict[str, Any]]] = []
+    seen: set[tuple[Path, str, tuple[Path, ...], tuple[Path, ...], Any]] = set()
+    owners: dict[str, set[str]] = {}
+    issues: list[dict[str, Any]] = []
     ecosystem_map = config.raw.get("source_ecosystems") or {}
     if not isinstance(ecosystem_map, dict):
         raise WorkshopError("CONFIG_INVALID", "source_ecosystems must map governed source paths to ecosystem names")
     for relative in translation_units:
+        relative = str(relative).replace("\\", "/")
         # Legacy compiler-backed workspaces predate source_ecosystems and are all
         # C-family. Universal workspaces must never run a C preprocessor scanner
         # over Python/Rust/JS/etc. where '# include' or similar text can be a
         # comment/string rather than preprocessor syntax.
         if ecosystem_map and str(ecosystem_map.get(relative, "")) != "c_family":
             continue
-        logical = (codebase / relative).resolve()
+        relative_path = Path(relative)
+        source_candidate = codebase / relative_path
+        if (
+            not relative
+            or _path_is_absolute(relative)
+            or _path_is_drive_relative(relative)
+            or ".." in relative_path.parts
+        ):
+            issues.append({
+                "code": "SOURCE_AUTHORITY_PATH_UNSAFE",
+                "message": f"translation-unit authority path is not a safe project-relative path: {relative}",
+                "details": {"owner": relative},
+            })
+            continue
+        try:
+            reject_link_components(source_candidate, label="translation-unit source")
+            logical = source_candidate.resolve()
+            logical.relative_to(codebase)
+        except (WorkshopError, OSError, ValueError) as exc:
+            issues.append({
+                "code": "SOURCE_AUTHORITY_PATH_UNSAFE",
+                "message": f"translation-unit authority path cannot be verified: {relative}",
+                "details": {"owner": relative, "error": str(exc)},
+            })
+            continue
         for variant in _translation_unit_include_variants(config, relative):
             queue.append((logical, relative, variant))
-    seen: set[tuple[Path, str, tuple[Path, ...], tuple[Path, ...], Any]] = set()
-    owners: dict[str, set[str]] = {}
-    issues: list[dict[str, Any]] = []
-
     def read_path(logical: Path) -> Path:
         try:
             relative = logical.resolve().relative_to(codebase).as_posix()
@@ -799,6 +1000,15 @@ def header_ownership(
             continue
         seen.add(visit)
         physical = read_path(logical_path)
+        try:
+            reject_link_components(physical, label="include-graph input")
+        except WorkshopError as exc:
+            issues.append({
+                "code": "INCLUDE_SCAN_LINK_UNSAFE",
+                "message": str(exc),
+                "details": {"logical": relative_posix(logical_path, codebase), "owner": owner},
+            })
+            continue
         if not physical.is_file():
             issues.append({
                 "code": "INCLUDE_SCAN_INPUT_MISSING",
@@ -837,6 +1047,22 @@ def header_ownership(
             candidates.extend(root / include_path for root in search_roots)
             selected_local: Path | None = None
             selected_external = False
+            unsafe_candidate = False
+            for candidate in candidates:
+                try:
+                    reject_link_components(candidate, label="include candidate")
+                except WorkshopError as exc:
+                    issues.append({
+                        "code": "INCLUDE_LINK_UNSAFE",
+                        "message": str(exc),
+                        "details": {"including": relative_posix(logical_path, codebase), "owner": owner},
+                    })
+                    unsafe_candidate = True
+                    break
+                except OSError:
+                    continue
+            if unsafe_candidate:
+                continue
             for candidate in candidates:
                 try:
                     resolved = candidate.resolve(strict=True)
@@ -1008,7 +1234,11 @@ def verify_project_intake_binding(
     hashing both into one package is not enough: stale cross-references must fail closed
     rather than become two independently authentic but contradictory facts.
     """
-    intake_path = (intake_path or (config.machine_root / "project-intake.json")).resolve()
+    intake_path = Path(intake_path or (config.machine_root / "project-intake.json"))
+    if not intake_path.is_absolute():
+        intake_path = config.machine_root / intake_path
+    reject_link_components(intake_path, label="project intake authority")
+    intake_path = intake_path.resolve()
     if not intake_path.is_file():
         return []
     issues: list[dict[str, Any]] = []
@@ -1025,15 +1255,21 @@ def verify_project_intake_binding(
             "message": "project-intake.json has an unsupported schema",
         }]
 
+    def declared_path(value: Any) -> Path | None:
+        try:
+            return _configured_path(value, "project-intake path", base=config.machine_root)
+        except WorkshopError:
+            return None
+
     declared_project_root = str(intake.get("project_root", ""))
     declared_workspace = str(intake.get("workspace", ""))
-    if Path(declared_project_root).resolve() != config.codebase_root.resolve():
+    if declared_path(declared_project_root) != config.codebase_root.resolve():
         issues.append({
             "code": "PROJECT_INTAKE_PROJECT_ROOT_MISMATCH",
             "message": "project intake root differs from the configured codebase root",
             "details": {"declared": declared_project_root, "configured": config.codebase_root.as_posix()},
         })
-    if Path(declared_workspace).resolve() != config.kairos_workspace.resolve():
+    if declared_path(declared_workspace) != config.kairos_workspace.resolve():
         issues.append({
             "code": "PROJECT_INTAKE_WORKSPACE_MISMATCH",
             "message": "project intake workspace differs from the configured KAIROS workspace",
@@ -1071,10 +1307,14 @@ def verify_project_intake_binding(
             },
         })
     compile_record = authority.get("compile_commands") if isinstance(authority, dict) else None
-    compile_path = (
+    compile_path = Path(
         compile_commands_path
         or (config.machine_root / "project-intake" / "compile_commands.json")
-    ).resolve()
+    )
+    if not compile_path.is_absolute():
+        compile_path = config.machine_root / compile_path
+    reject_link_components(compile_path, label="retained compile authority")
+    compile_path = compile_path.resolve()
     if not isinstance(compile_record, dict) or not compile_path.is_file():
         issues.append({
             "code": "PROJECT_INTAKE_COMPILE_AUTHORITY_MISSING",
@@ -1085,7 +1325,7 @@ def verify_project_intake_binding(
         actual_sha = sha256_bytes(raw).lower()
         actual_bytes = len(raw)
         declared_compile_path = str(compile_record.get("path", ""))
-        if Path(declared_compile_path).resolve() != compile_path:
+        if declared_path(declared_compile_path) != compile_path:
             issues.append({
                 "code": "PROJECT_INTAKE_COMPILE_PATH_MISMATCH",
                 "message": "project intake compile_commands path differs from retained machine authority",
@@ -1135,7 +1375,7 @@ def verify_project_intake_binding(
             continue
         declared_source_path = str(declared.get("path", ""))
         expected_source_path = (config.codebase_root / relative).resolve()
-        if Path(declared_source_path).resolve() != expected_source_path:
+        if declared_path(declared_source_path) != expected_source_path:
             issues.append({
                 "code": "PROJECT_INTAKE_SOURCE_PATH_MISMATCH",
                 "message": f"project-intake source path differs for {relative}",
@@ -1189,7 +1429,13 @@ def verify_project_intake_binding(
                     })
 
     declared_include_roots = sorted(str(value) for value in intake.get("include_roots", []))
-    configured_include_roots = sorted(path.as_posix() for path in config.include_roots)
+    # Compare the serialized authority representation, not the loader's
+    # resolved Path objects.  Relative config paths are intentionally portable
+    # and must remain byte-for-byte aligned with the retained intake manifest.
+    configured_include_roots = sorted(
+        str(value).replace("\\", "/")
+        for value in (config.raw.get("include_roots") or [])
+    )
     if declared_include_roots != configured_include_roots:
         issues.append({
             "code": "PROJECT_INTAKE_INCLUDE_ROOT_MISMATCH",
@@ -1225,7 +1471,7 @@ def verify_project_intake_binding(
         if isinstance(facts, dict):
             declared_header_path = str(facts.get("path", ""))
             expected_header_path = (config.codebase_root / relative).resolve()
-            if Path(declared_header_path).resolve() != expected_header_path:
+            if declared_path(declared_header_path) != expected_header_path:
                 issues.append({
                     "code": "PROJECT_INTAKE_HEADER_PATH_MISMATCH",
                     "message": f"project-intake header path differs for {relative}",

@@ -22,6 +22,7 @@ from kairos.framework import (  # noqa: E402
     FRAMEWORK_MANIFEST_NAME,
     FRAMEWORK_VERSION,
     FRAMEWORK_WORKSPACE_ID,
+    framework_database_content_sha256,
 )
 from kairos.promoter import promote_many  # noqa: E402
 import kairos.promoter as promoter_module  # noqa: E402
@@ -199,6 +200,7 @@ def build_once(output: Path) -> dict:
         "workspace_id": FRAMEWORK_WORKSPACE_ID,
         "database_file": FRAMEWORK_DATABASE_NAME,
         "database_sha256": sha256(output),
+        "database_content_sha256": framework_database_content_sha256(output),
         "document_count": len(documents_manifest),
         "documents": documents_manifest,
         "gold_queries": gold_results,
@@ -226,6 +228,8 @@ def main() -> int:
                 raise SystemExit(
                     f"framework DB is not deterministic: {manifest['database_sha256']} != {sha256(second)}"
                 )
+            if framework_database_content_sha256(second) != manifest["database_content_sha256"]:
+                raise SystemExit("framework DB content is not deterministic")
             if [item["sha256"] for item in second_manifest["documents"]] != [item["sha256"] for item in manifest["documents"]]:
                 raise SystemExit("framework document inventory changed between deterministic builds")
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")

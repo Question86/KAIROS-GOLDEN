@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .errors import KickstartError
+from .portable import reject_link_components
 
 
 SOURCE_SUFFIXES = frozenset({".c", ".cc", ".cpp", ".cxx", ".cu"})
@@ -131,10 +132,12 @@ def _normalized_relative(root: Path, path: Path) -> tuple[str, Path]:
 
 
 def _regular_directory(path: Path, *, label: str) -> Path:
+    reject_link_components(path, label=label)
     try:
         resolved = path.resolve(strict=True)
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
         raise KickstartError("COMPILE_DIRECTORY_MISSING", f"{label} does not exist: {path}") from exc
+    reject_link_components(resolved, label=label)
     if not resolved.is_dir():
         raise KickstartError("COMPILE_DIRECTORY_INVALID", f"{label} is not a directory: {resolved}")
     return resolved
@@ -360,12 +363,20 @@ def survey_compile_commands(
     cmake_file: Path | None = None,
     cmake_sha256: str | None = None,
 ) -> Survey:
+    project_root = Path(project_root)
+    reject_link_components(project_root, label="project root")
     project_root = project_root.resolve()
     if not project_root.is_dir():
         raise KickstartError("PROJECT_ROOT_INVALID", f"project_root is not a directory: {project_root}")
+    compile_commands = Path(compile_commands)
+    reject_link_components(compile_commands, label="compile_commands")
     compile_commands = compile_commands.resolve()
     if not compile_commands.is_file():
         raise KickstartError("COMPILE_COMMANDS_MISSING", f"compile_commands.json is missing: {compile_commands}")
+    if cmake_file is not None:
+        cmake_file = Path(cmake_file)
+        reject_link_components(cmake_file, label="CMake file")
+        cmake_file = cmake_file.resolve()
     try:
         raw = compile_commands.read_bytes()
         payload = json.loads(raw.decode("utf-8"))

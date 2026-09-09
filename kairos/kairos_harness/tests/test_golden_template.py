@@ -4,6 +4,7 @@ import json
 import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 import uuid
 from pathlib import Path
@@ -13,12 +14,15 @@ from kairos.golden import ROOT_LICENSE, build_golden_template, verify_golden_tem
 from kairos.heartbeat import load_runtime_state
 
 
-TEST_ROOT = Path(__file__).resolve().parent / "_tmp"
+# Keep generated fixtures outside the package tree.  This is required for
+# read-only checkouts and avoids Windows ACL/reparse-point surprises in the
+# source directory.
+_TEST_ROOT = tempfile.TemporaryDirectory(prefix="kairos-golden-template-tests-")
+TEST_ROOT = Path(_TEST_ROOT.name)
 
 
 class GoldenTemplateTests(unittest.TestCase):
     def setUp(self) -> None:
-        TEST_ROOT.mkdir(parents=True, exist_ok=True)
         self.target = TEST_ROOT / f"golden-{uuid.uuid4().hex}"
         self.clone = TEST_ROOT / f"clone-{uuid.uuid4().hex}"
         self.source_fixture = TEST_ROOT / f"source-{uuid.uuid4().hex}"

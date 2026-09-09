@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import sqlite3
+import stat
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,6 +25,58 @@ class WorkshopError(RuntimeError):
         if self.details is not None:
             payload["details"] = self.details
         return payload
+
+
+def is_link_or_reparse(path: Path) -> bool:
+    """Return whether *path* is a symlink or Windows reparse point.
+
+    ``Path.is_symlink`` alone does not cover junctions and other reparse points
+    on Windows.  The latter are deliberately treated as linked paths because a
+    fail-closed authority must not silently follow a path outside its declared
+    byte boundary.
+    """
+
+    try:
+        info = path.lstat()
+    except OSError:
+        return False
+    return stat.S_ISLNK(info.st_mode) or bool(getattr(info, "st_file_attributes", 0) & 0x400)
+
+
+def reject_link_components(path: Path, *, label: str = "path") -> None:
+    """Reject existing symlink/reparse components without resolving through them."""
+
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        candidate = Path.cwd() / candidate
+    current = Path(candidate.anchor) if candidate.anchor else Path.cwd()
+    parts = candidate.parts
+    start = 1 if candidate.anchor else 0
+    for part in parts[start:]:
+        if part in {"", "."}:
+            continue
+        if part == "..":
+            if is_link_or_reparse(current):
+                raise WorkshopError(
+                    "PATH_LINK_UNSAFE",
+                    f"{label} contains a symlink or reparse component: {current}",
+                )
+            current = current.parent
+            continue
+        current = current / part
+        try:
+            current.lstat()
+        except FileNotFoundError:
+            # Missing descendants will be created or reported by the caller;
+            # there cannot be a hidden existing link below a missing component.
+            break
+        except (OSError, ValueError) as exc:
+            raise WorkshopError("PATH_UNVERIFIABLE", f"cannot inspect {label}: {current}") from exc
+        if is_link_or_reparse(current):
+            raise WorkshopError(
+                "PATH_LINK_UNSAFE",
+                f"{label} contains a symlink or reparse component: {current}",
+            )
 
 
 def utc_now() -> str:
@@ -95,6 +148,7 @@ def package_hash(value: Any) -> str:
 
 
 def read_json(path: Path) -> Any:
+    reject_link_components(path, label="JSON input")
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
@@ -102,6 +156,9 @@ def read_json(path: Path) -> Any:
 
 
 def atomic_write_bytes(path: Path, value: bytes) -> None:
+    reject_link_components(path.parent, label="atomic-write parent")
+    if path.exists() or path.is_symlink():
+        reject_link_components(path, label="atomic-write target")
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     temporary_path = Path(temporary)
@@ -140,6 +197,10 @@ def relative_posix(path: Path, root: Path) -> str:
 
 
 def copy_exact(source: Path, destination: Path) -> None:
+    reject_link_components(source, label="copy source")
+    reject_link_components(destination.parent, label="copy destination parent")
+    if destination.exists() or destination.is_symlink():
+        reject_link_components(destination, label="copy destination")
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(source, destination)
     if source.read_bytes() != destination.read_bytes():
@@ -147,6 +208,10 @@ def copy_exact(source: Path, destination: Path) -> None:
 
 
 def sqlite_snapshot(source: Path, destination: Path) -> None:
+    reject_link_components(source, label="SQLite source")
+    reject_link_components(destination.parent, label="SQLite snapshot parent")
+    if destination.exists() or destination.is_symlink():
+        reject_link_components(destination, label="SQLite snapshot destination")
     destination.parent.mkdir(parents=True, exist_ok=True)
     source_uri = f"file:{source.as_posix()}?mode=ro"
     input_connection = sqlite3.connect(source_uri, uri=True)

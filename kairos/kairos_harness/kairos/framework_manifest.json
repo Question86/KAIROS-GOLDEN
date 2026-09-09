@@ -3,6 +3,7 @@
   "build_epoch": "2000-01-01T00:00:00Z",
   "database_file": "framework.db",
   "database_sha256": "22d79a1a0e12ad346d67d71339677fbc39bd0c55d29bfa0b8b52ccd1819e01f5",
+  "database_content_sha256": "fe69fb3146d20892c4f2a84d2aab60667af632561515229f5af6c51b91ca248a",
   "derived": true,
   "document_count": 24,
   "documents": [

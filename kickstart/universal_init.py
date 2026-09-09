@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .errors import KickstartError
+from .portable import portable_path, reject_link_components
 from .survey import survey_compile_commands
 from .universal import (
     UniversalSource,
@@ -84,7 +85,7 @@ def _compiler_membership(project_root: Path, compile_commands: Path | None) -> s
             "C/C++/CUDA translation units were detected; --auto requires compiler-produced compile_commands.json for those files",
             details={"detected": sorted(c_family_present)[:100], "count": len(c_family_present)},
         )
-    survey = survey_compile_commands(compile_commands.resolve(), project_root, source_kind="compile_commands")
+    survey = survey_compile_commands(compile_commands, project_root, source_kind="compile_commands")
     membership = {unit.relative_path for unit in survey.units}
     unproven = sorted(set(c_family_present) - membership)
     if unproven:
@@ -97,6 +98,11 @@ def _compiler_membership(project_root: Path, compile_commands: Path | None) -> s
 
 
 def survey_universal_sources(project_root: Path, *, compile_commands: Path | None = None) -> UniversalSurvey:
+    project_root = Path(project_root)
+    reject_link_components(project_root, label="project root")
+    if compile_commands is not None:
+        compile_commands = Path(compile_commands)
+        reject_link_components(compile_commands, label="compile_commands")
     root = project_root.resolve()
     if not root.is_dir():
         raise KickstartError("PROJECT_ROOT_INVALID", f"project_root is not a directory: {root}")
@@ -171,7 +177,11 @@ def initialize_universal_markdown(
         load_config,
     ) = _harness_imports()
 
+    project_root = Path(project_root)
+    reject_link_components(project_root, label="project root")
     project_root = project_root.resolve()
+    workspace = Path(workspace)
+    reject_link_components(workspace, label="KAIROS workspace")
     workspace = workspace.resolve()
     if not project_root.is_dir():
         raise KickstartError("PROJECT_ROOT_INVALID", f"project_root is not a directory: {project_root}")
@@ -224,6 +234,7 @@ def initialize_universal_markdown(
         updated_at=updated_at,
     )
     documents = binding.documents
+    machine_root = binding.config_path.parent.resolve()
     changed = sorted(documents)
     issue_external_edit_permit(
         workspace,
@@ -238,8 +249,9 @@ def initialize_universal_markdown(
         "schema": "kairos-universal-intake/v1",
         "snapshot_role": "initial_intake_provenance",
         "created_at": updated_at,
-        "project_root": project_root.as_posix(),
-        "workspace": workspace.as_posix(),
+        "path_resolution": "config-directory-relative-v1",
+        "project_root": portable_path(project_root, base=machine_root),
+        "workspace": portable_path(workspace, base=machine_root),
         "workspace_id": workspace_id_actual,
         "ecosystems": list(survey.ecosystems),
         "source_count": len(survey.sources),

@@ -14,6 +14,7 @@ from typing import Any
 from .blueprints import BlueprintSet, filename_for, render_binding_documents, render_blueprints
 from .cmake import CMakeConfigure, configure_compile_commands
 from .errors import KickstartError
+from .portable import portable_path, portable_probe_argv, reject_link_components
 from .survey import HEADER_SUFFIXES, Survey, compiler_context_sha256, compiler_probe_argv, reject_links, survey_compile_commands
 
 
@@ -323,15 +324,22 @@ def _manifest(
     task_id: str,
     project_intent_sha256: str | None,
 ) -> dict[str, Any]:
+    machine_root = intake_directory.parent.resolve()
+    movable_roots = (project_root.resolve(), workspace.resolve())
+
     def facts(path: Path) -> dict[str, Any]:
         raw = path.read_bytes()
-        return {"path": path.as_posix(), "sha256": _sha256(raw), "bytes": len(raw)}
+        return {
+            "path": portable_path(path, base=machine_root, relative_roots=movable_roots),
+            "sha256": _sha256(raw),
+            "bytes": len(raw),
+        }
 
     return {
         "schema": "kairos-project-intake/v1",
         "state": "verified_pending_workshop_audit",
-        "project_root": project_root.as_posix(),
-        "workspace": workspace.as_posix(),
+        "project_root": portable_path(project_root, base=machine_root),
+        "workspace": portable_path(workspace, base=machine_root),
         "project_scope": {
             "workspace_id": workspace_id,
             "goal_id": goal_id,
@@ -344,18 +352,37 @@ def _manifest(
             "compile_commands": facts(retained_compile_commands),
             "compiler_context_sha256": compiler_context_sha256(survey, project_root),
             "cmake_file": facts(cmake_configure.cmake_file) if cmake_configure else None,
-            "cmake_build_directory": cmake_configure.build_directory.as_posix() if cmake_configure else None,
+            "cmake_build_directory": (
+                portable_path(
+                    cmake_configure.build_directory,
+                    base=machine_root,
+                    relative_roots=movable_roots,
+                )
+                if cmake_configure else None
+            ),
         },
         "translation_units": [
             {
                 "relative_path": unit.relative_path,
                 "commands": len(unit.commands),
-                "include_roots": [root.as_posix() for root in unit.include_roots],
+                "include_roots": [
+                    portable_path(root, base=machine_root, relative_roots=movable_roots)
+                    for root in unit.include_roots
+                ],
                 "include_search_variants": [
                     {
-                        "quote_roots": [root.as_posix() for root in variant.quote_include_roots],
-                        "angle_roots": [root.as_posix() for root in variant.angle_include_roots],
-                        "idirafter_roots": [root.as_posix() for root in variant.idirafter_roots],
+                        "quote_roots": [
+                            portable_path(root, base=machine_root, relative_roots=movable_roots)
+                            for root in variant.quote_include_roots
+                        ],
+                        "angle_roots": [
+                            portable_path(root, base=machine_root, relative_roots=movable_roots)
+                            for root in variant.angle_include_roots
+                        ],
+                        "idirafter_roots": [
+                            portable_path(root, base=machine_root, relative_roots=movable_roots)
+                            for root in variant.idirafter_roots
+                        ],
                     }
                     for variant in unit.variants
                 ],
@@ -363,7 +390,10 @@ def _manifest(
             }
             for unit in survey.units
         ],
-        "include_roots": [root.as_posix() for root in survey.include_roots],
+        "include_roots": [
+            portable_path(root, base=machine_root, relative_roots=movable_roots)
+            for root in survey.include_roots
+        ],
         "external_include_roots": list(survey.ignored_external_include_roots),
         "include_closure": {
             relative: {"owners": sorted(owners), "facts": facts(path)}
@@ -397,9 +427,13 @@ def initialize_project(
         atomic_write_text, read_json, utc_now, _, initialize_workspace,
         initialize_project_workspace, validate_project_kickoff_contract, load_config,
     ) = _harness_imports()
+    project_root = Path(project_root)
+    reject_link_components(project_root, label="project root")
     project_root = project_root.resolve()
     if not project_root.is_dir():
         raise KickstartError("PROJECT_ROOT_INVALID", f"project_root is not a directory: {project_root}")
+    workspace = Path(workspace)
+    reject_link_components(workspace, label="KAIROS workspace")
     workspace = workspace.resolve()
     if (workspace / ".kairos" / "project-intake.json").exists():
         raise KickstartError("PROJECT_ALREADY_BOUND", f"workspace already contains a project intake: {workspace / '.kairos' / 'project-intake.json'}")
@@ -458,13 +492,13 @@ def initialize_project(
         raise KickstartError("AUTHORITY_INPUT_AMBIGUOUS", "provide either compile_commands.json or a CMake file, not both")
     try:
         if cmake_file is not None:
-            cmake_configure = configure_compile_commands(project_root, cmake_file.resolve(), cmake_executable=cmake_executable, build_directory=build_directory)
+            cmake_configure = configure_compile_commands(project_root, cmake_file, cmake_executable=cmake_executable, build_directory=build_directory)
             source_input = cmake_configure.compile_commands
             temporary_build = cmake_configure.temporary_build
             source_kind = "cmake_compile_commands"
             cmake_hash = _sha256(cmake_configure.cmake_file.read_bytes())
         elif compile_commands is not None:
-            source_input = compile_commands.resolve()
+            source_input = Path(compile_commands)
             source_kind = "compile_commands"
             cmake_hash = None
         else:
@@ -552,27 +586,38 @@ def initialize_project(
 
         build_authority = intake_directory / "PROJECT_BUILD_AUTHORITY.cmake"
         atomic_write_text(build_authority, _cmake_authority(survey.units))
-        include_roots = [root.as_posix() for root in survey.include_roots]
         header_only = {relative: filename_for(relative, header_only=True) for relative in sorted(headers)}
         config_path = workspace / ".kairos" / "workshop.config.json"
+        machine_root = config_path.parent.resolve()
+        movable_roots = (project_root.resolve(), workspace.resolve())
+        serialize_path = lambda value: portable_path(
+            value, base=machine_root, relative_roots=movable_roots
+        )
+
+        def serialize_probe(value: tuple[str, ...]) -> list[str]:
+            return list(
+                portable_probe_argv(value, base=machine_root, relative_roots=movable_roots)
+            )
+
         workshop_config = {
             "schema": "runtime-sync-workshop-config/v1",
             "compiler_context_sha256": compiler_context_sha256(survey, project_root),
-            "codebase_root": project_root.as_posix(),
-            "runtime_root": project_root.as_posix(),
-            "cmake_file": build_authority.as_posix(),
+            "path_resolution": "config-directory-relative-v1",
+            "codebase_root": serialize_path(project_root),
+            "runtime_root": serialize_path(project_root),
+            "cmake_file": serialize_path(build_authority),
             "cmake_source_sets": ["KAIROS_TRANSLATION_UNITS"],
             "cmake_extra_sources": [],
-            "dataflow_index": (workspace / "docs" / "PROJECT_SOURCE_INDEX.md").as_posix(),
-            "blueprint_root": external_root.as_posix(),
-            "managed_blueprint_root": (workspace / "code").as_posix(),
-            "kairos_workspace": workspace.as_posix(),
-            "kairos_harness": (_canonical_root() / "kairos" / "kairos_harness").as_posix(),
-            "kairos_database": (workspace / ".kairos" / "kairos.db").as_posix(),
-            "include_roots": include_roots,
+            "dataflow_index": serialize_path(workspace / "docs" / "PROJECT_SOURCE_INDEX.md"),
+            "blueprint_root": serialize_path(external_root),
+            "managed_blueprint_root": serialize_path(workspace / "code"),
+            "kairos_workspace": serialize_path(workspace),
+            "kairos_harness": "@bundled",
+            "kairos_database": serialize_path(workspace / ".kairos" / "kairos.db"),
+            "include_roots": [serialize_path(root) for root in survey.include_roots],
             "translation_unit_include_roots": {
                 unit.relative_path: [
-                    [root.as_posix() for root in sequence]
+                    [serialize_path(root) for root in sequence]
                     for sequence in unit.include_root_sequences
                 ]
                 for unit in survey.units
@@ -580,13 +625,13 @@ def initialize_project(
             "translation_unit_include_variants": {
                 unit.relative_path: [
                     {
-                        "quote_roots": [root.as_posix() for root in variant.quote_include_roots],
-                        "angle_roots": [root.as_posix() for root in variant.angle_include_roots],
-                        "idirafter_roots": [root.as_posix() for root in variant.idirafter_roots],
+                        "quote_roots": [serialize_path(root) for root in variant.quote_include_roots],
+                        "angle_roots": [serialize_path(root) for root in variant.angle_include_roots],
+                        "idirafter_roots": [serialize_path(root) for root in variant.idirafter_roots],
                         "compiler_probe": (
                             {
-                                "argv": list(probe),
-                                "directory": project_root.as_posix(),
+                                "argv": serialize_probe(probe),
+                                "directory": serialize_path(variant.directory),
                             }
                             if (probe := compiler_probe_argv(variant.argv, directory=variant.directory, project_root=project_root))
                             else None
@@ -599,8 +644,8 @@ def initialize_project(
             "translation_unit_compiler_probes": {
                 unit.relative_path: [
                     {
-                        "argv": list(probe),
-                        "directory": project_root.as_posix(),
+                        "argv": serialize_probe(probe),
+                        "directory": serialize_path(variant.directory),
                     }
                     for variant in unit.variants
                     if (probe := compiler_probe_argv(variant.argv, directory=variant.directory, project_root=project_root))

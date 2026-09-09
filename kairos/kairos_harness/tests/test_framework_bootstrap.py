@@ -13,6 +13,7 @@ from kairos.framework import (
     FRAMEWORK_DATABASE_NAME,
     FRAMEWORK_DOCUMENT_PATHS,
     framework_database_path,
+    framework_database_content_sha256,
     framework_manifest_path,
     verify_framework_bundle,
 )
@@ -100,7 +101,7 @@ class FrameworkBootstrapTests(unittest.TestCase):
         self.assertEqual(payload['primary']['section_id'], 's-authority-migration')
         self.assertEqual(payload['framework']['source_documents_verified'], len(FRAMEWORK_DOCUMENT_PATHS))
 
-    def test_framework_index_rebuild_is_binary_deterministic(self) -> None:
+    def test_framework_index_rebuild_is_content_equivalent_across_sqlite_builds(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             temp = Path(temp)
             output = temp / FRAMEWORK_DATABASE_NAME
@@ -124,8 +125,13 @@ class FrameworkBootstrapTests(unittest.TestCase):
             )
             self.assertEqual(completed.returncode, 0, completed.stdout)
             self.assertEqual(
-                hashlib.sha256(output.read_bytes()).hexdigest(),
-                hashlib.sha256(framework_database_path().read_bytes()).hexdigest(),
+                framework_database_content_sha256(output),
+                framework_database_content_sha256(framework_database_path()),
+            )
+            generated_manifest = json.loads(manifest.read_text(encoding="utf-8"))
+            self.assertEqual(
+                generated_manifest["database_content_sha256"],
+                framework_database_content_sha256(output),
             )
 
 

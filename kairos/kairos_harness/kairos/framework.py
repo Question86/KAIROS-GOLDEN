@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +47,66 @@ FRAMEWORK_DOCUMENT_PATHS: tuple[str, ...] = (
 
 def _sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _canonical_sqlite_value(value: object) -> list[object]:
+    """Encode SQLite values without depending on the host SQLite file format."""
+    if value is None:
+        return ["null"]
+    if isinstance(value, bytes):
+        return ["blob", value.hex()]
+    if isinstance(value, float):
+        return ["real", value.hex()]
+    if isinstance(value, int):
+        return ["integer", value]
+    if isinstance(value, str):
+        return ["text", value]
+    return [type(value).__name__, repr(value)]
+
+
+def framework_database_content_sha256(path: Path | str | None = None) -> str:
+    """Hash framework database content independently of SQLite build metadata.
+
+    SQLite may change the file header, schema cookie, statistics tables, and page layout
+    across operating systems or SQLite versions.  Those bytes remain useful for bundle
+    integrity, but they are not a portable rebuild identity.  This digest covers the
+    executable schema and row content while excluding SQLite's derived ``sqlite_stat*``
+    tables.
+    """
+    database_path = Path(path) if path is not None else framework_database_path()
+    resolved = database_path.resolve()
+    connection = sqlite3.connect(f"file:{resolved.as_posix()}?mode=ro", uri=True)
+    try:
+        objects = connection.execute(
+            "SELECT type, name, tbl_name, sql FROM sqlite_master "
+            "WHERE name NOT LIKE 'sqlite_stat%' ORDER BY type, name"
+        ).fetchall()
+        canonical: list[object] = []
+        for object_type, name, table_name, sql in objects:
+            canonical.append(["schema", object_type, name, table_name, sql])
+            if object_type != "table":
+                continue
+            identifier = '"' + str(name).replace('"', '""') + '"'
+            try:
+                rows = connection.execute(f"SELECT rowid, * FROM {identifier}").fetchall()
+            except sqlite3.OperationalError:
+                rows = connection.execute(f"SELECT * FROM {identifier}").fetchall()
+            encoded_rows = [
+                [_canonical_sqlite_value(value) for value in row]
+                for row in rows
+            ]
+            encoded_rows.sort(
+                key=lambda row: json.dumps(row, ensure_ascii=False, separators=(",", ":"))
+            )
+            canonical.append(["rows", name, encoded_rows])
+        payload = json.dumps(
+            canonical,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        return _sha256_bytes(payload)
+    finally:
+        connection.close()
 
 
 def package_directory() -> Path:
@@ -95,6 +156,13 @@ def verify_framework_bundle(*, verify_sources: bool = True) -> dict[str, Any]:
         raise RuntimeError(
             f"framework database SHA-256 mismatch: {database_sha} != {expected_database_sha}"
         )
+    database_content_sha = framework_database_content_sha256(database_path)
+    expected_database_content_sha = manifest.get("database_content_sha256")
+    if expected_database_content_sha and database_content_sha != expected_database_content_sha:
+        raise RuntimeError(
+            "framework database content SHA-256 mismatch: "
+            f"{database_content_sha} != {expected_database_content_sha}"
+        )
 
     verified_sources = 0
     root = source_distribution_root() if verify_sources else None
@@ -121,6 +189,7 @@ def verify_framework_bundle(*, verify_sources: bool = True) -> dict[str, Any]:
         "version": manifest.get("version", FRAMEWORK_VERSION),
         "database": str(database_path),
         "database_sha256": database_sha,
+        "database_content_sha256": database_content_sha,
         "document_count": int(manifest.get("document_count", 0)),
         "source_documents_verified": verified_sources,
     }

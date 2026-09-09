@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import shutil
 import sys
 import tempfile
 import unittest
@@ -15,6 +16,7 @@ for value in (PACKAGE_ROOT, WORKSHOP_SRC):
 
 from kickstart.binding import initialize_project  # noqa: E402
 from runtime_sync_workshop.engine import WorkshopEngine  # noqa: E402
+from runtime_sync_workshop.util import WorkshopError  # noqa: E402
 
 
 def project_spec() -> dict:
@@ -75,6 +77,40 @@ def initialized_workspace(root: Path) -> tuple[Path, WorkshopEngine]:
 
 
 class ProjectIntakeBindingTests(unittest.TestCase):
+    def test_generated_binding_is_relocatable_with_the_project_and_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            workspace, _ = initialized_workspace(root)
+            config_path = workspace / ".kairos" / "workshop.config.json"
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+            self.assertEqual(config["path_resolution"], "config-directory-relative-v1")
+            self.assertFalse(Path(config["codebase_root"]).is_absolute())
+            self.assertFalse(Path(config["runtime_root"]).is_absolute())
+            self.assertEqual(config["kairos_harness"], "@bundled")
+
+            moved = root / "moved-checkout"
+            moved_project = moved / "project"
+            moved_workspace = moved / "workspace"
+            shutil.copytree(root / "project", moved_project)
+            shutil.copytree(workspace, moved_workspace)
+
+            moved_engine = WorkshopEngine(moved_workspace / ".kairos" / "workshop.config.json")
+            status = moved_engine.status(persist=False)
+            self.assertTrue(status["verified"], status["issues"])
+            self.assertEqual(moved_engine.config.codebase_root, moved_project.resolve())
+            self.assertEqual(moved_engine.config.kairos_workspace, moved_workspace.resolve())
+
+    def test_machine_local_config_paths_cannot_escape_the_config_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace, _ = initialized_workspace(Path(temporary))
+            config_path = workspace / ".kairos" / "workshop.config.json"
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+            config["state_directory"] = "../outside-state"
+            config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+            with self.assertRaises(WorkshopError) as raised:
+                WorkshopEngine(config_path)
+            self.assertEqual(raised.exception.code, "CONFIG_INVALID")
+
     def test_tampered_workshop_config_binding_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             workspace, engine = initialized_workspace(Path(temporary))

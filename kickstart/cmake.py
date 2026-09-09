@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .errors import KickstartError
+from .portable import reject_link_components
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,65 @@ def _reject_links_before_tool(project_root: Path) -> None:
                     "CMAKE_SOURCE_LINK_UNSUPPORTED",
                     f"CMake isolation refuses symlink/reparse paths in the observed project: {candidate}",
                 )
+
+
+def _reject_existing_link_components(path: Path, *, label: str) -> None:
+    """Refuse an external output/tool path that traverses a link or junction."""
+
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        candidate = Path.cwd() / candidate
+    current = Path(candidate.anchor) if candidate.anchor else Path.cwd()
+    start = 1 if candidate.anchor else 0
+    for part in candidate.parts[start:]:
+        if part in {"", "."}:
+            continue
+        if part == "..":
+            if _is_link_or_reparse(current):
+                raise KickstartError(
+                    "CMAKE_PATH_LINK_UNSAFE",
+                    f"{label} contains a symlink or reparse component: {current}",
+                )
+            current = current.parent
+            continue
+        current = current / part
+        try:
+            current.lstat()
+        except FileNotFoundError:
+            break
+        except (OSError, ValueError) as exc:
+            raise KickstartError("CMAKE_PATH_UNVERIFIABLE", f"cannot inspect {label}: {current}") from exc
+        if _is_link_or_reparse(current):
+            raise KickstartError(
+                "CMAKE_PATH_LINK_UNSAFE",
+                f"{label} contains a symlink or reparse component: {current}",
+            )
+
+
+def _resolve_external_cmake(value: str, project_root: Path) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise KickstartError("CMAKE_EXECUTABLE_INVALID", "cmake executable must be a non-empty command or path")
+    explicit = Path(value)
+    if explicit.is_absolute() or any(separator in value for separator in ("/", "\\")):
+        candidate = explicit if explicit.is_absolute() else Path.cwd() / explicit
+    else:
+        located = shutil.which(value)
+        if not located:
+            raise KickstartError("CMAKE_EXECUTABLE_MISSING", f"CMake executable was not found on PATH: {value}")
+        candidate = Path(located)
+    _reject_existing_link_components(candidate, label="CMake executable")
+    try:
+        resolved = candidate.resolve(strict=True)
+    except OSError as exc:
+        raise KickstartError("CMAKE_EXECUTABLE_MISSING", f"CMake executable is not readable: {candidate}") from exc
+    if _inside(resolved, project_root):
+        raise KickstartError(
+            "CMAKE_EXECUTABLE_PROJECT_LOCAL",
+            "CMake executable must resolve outside the inspected project; project-local wrappers are not executed",
+        )
+    if not resolved.is_file():
+        raise KickstartError("CMAKE_EXECUTABLE_INVALID", f"CMake executable is not a file: {resolved}")
+    return str(resolved)
 
 
 def _inside(path: Path, root: Path) -> bool:
@@ -106,7 +166,11 @@ def configure_compile_commands(
     its source directory.  Its compile database is then path-remapped back to the exact
     original snapshot identities before the normal compiler-authority survey consumes it.
     """
+    project_root = Path(project_root)
+    reject_link_components(project_root, label="project root")
     project_root = project_root.resolve()
+    cmake_file = Path(cmake_file)
+    reject_link_components(cmake_file, label="CMake file")
     cmake_file = cmake_file.resolve()
     if not project_root.is_dir():
         raise KickstartError("PROJECT_ROOT_INVALID", f"project_root is not a directory: {project_root}")
@@ -118,11 +182,13 @@ def configure_compile_commands(
         raise KickstartError("CMAKE_FILE_MISSING", f"CMake file is missing: {cmake_file}")
 
     _reject_links_before_tool(project_root)
+    cmake_command = _resolve_external_cmake(cmake_executable, project_root)
 
     temporary = build_directory is None
     if temporary:
         build_directory = Path(tempfile.mkdtemp(prefix="kairos-cmake-build-"))
     else:
+        _reject_existing_link_components(build_directory, label="CMake build directory")
         build_directory = build_directory.resolve()
         if _inside(build_directory, project_root):
             raise KickstartError(
@@ -130,6 +196,7 @@ def configure_compile_commands(
                 "CMake build_directory must not be inside the governed project; use an isolated external build directory",
             )
         build_directory.mkdir(parents=True, exist_ok=True)
+        _reject_existing_link_components(build_directory, label="CMake build directory")
 
     clone_parent = Path(tempfile.mkdtemp(prefix="kairos-cmake-source-"))
     clone_root = clone_parent / "project"
@@ -140,7 +207,7 @@ def configure_compile_commands(
             raise KickstartError("CMAKE_CLONE_INVALID", f"isolated CMake source is missing after clone: {cmake_relative}")
         source_directory = clone_cmake_file.parent
         command = [
-            cmake_executable,
+            cmake_command,
             "-S",
             str(source_directory),
             "-B",

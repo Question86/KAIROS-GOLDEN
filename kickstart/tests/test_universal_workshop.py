@@ -81,7 +81,10 @@ class UniversalWorkshopRoundtripTests(unittest.TestCase):
         )
         transaction_id = checkout["transaction_id"]
         work_source = Path(checkout["work_directory"]) / source_relative
-        work_source.write_text(changed_text, encoding="utf-8")
+        # Keep the test input byte-exact on Windows.  Path.write_text's default
+        # newline translation would otherwise turn the requested LF payload
+        # into CRLF before Workshop can prove its exact copy semantics.
+        work_source.write_bytes(changed_text.encode("utf-8"))
 
         review_path = Path(checkout["metadata_review"])
         review = json.loads(review_path.read_text(encoding="utf-8"))
