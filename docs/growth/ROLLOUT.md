@@ -18,7 +18,17 @@ On 2026-09-10 Yannick supplied the new [Question86/Werkfaden](https://github.com
 
 The follow-up presentation changes replace active repository URLs in the public README, first-use clone command, evidence links, social drafts and citation metadata. Social destinations now use the repository root instead of the growth branch. The growth integrity check rejects old active repository URLs while leaving historical artifact names and internal KAIROS identifiers untouched. API redirect verification is not an exhaustive test of all browser, Git transport, raw-file or artifact links.
 
-The About description still read `Sealed reusable KAIROS starter with atomic governed project kickoff`, topics were empty and no homepage was set at this check. These are remaining presentation settings, not software defects. Domain, trademark and social-handle clearance are not established by a repository rename.
+At the rename check, the About description still read `Sealed reusable KAIROS starter with atomic governed project kickoff`, topics were empty and no homepage was set. That historical observation is superseded for description and topics by the completed metadata check below. Domain, trademark and social-handle clearance are not established by a repository rename.
+
+## About metadata completed
+
+On 2026-09-10 Yannick reported that the description and topics had been updated. A subsequent read of the [repository API](https://api.github.com/repos/Question86/Werkfaden) confirmed the same repository ID and this exact public description:
+
+> Project context and controlled changes for AI coding agents. Keep the thread. Verify the change.
+
+All eight requested topics are present, plus three added by the founder. The eleven returned topics are `ai-agents`, `ai-coding`, `codebase`, `codebase-atlas`, `context-engineering`, `cpp`, `cuda`, `developer-tools`, `knowledge-graph`, `llm` and `python`. The repository metadata reports `updated_at = 2026-09-10T15:43:23Z`.
+
+Repository rename, public-link migration, About description and topic entry are now completed rollout tasks. Do not ask the founder to repeat them. Website remains empty until a separate public landing exists. This check establishes public metadata, not search-engine indexing, improved ranking, traffic or adoption.
 
 ## Initial observations
 
@@ -40,9 +50,23 @@ These are exploratory usability trials, not statistically powered A/B studies. D
 
 ## Founder marketing tasks
 
-1. Complete the name-reservation/clearance step before significant brand spend: check exact and similar marks, registrar availability and social handles. No domain or trademark registration is recorded by this rollout; the repository itself has now been renamed.
-2. Finish the GitHub About settings. The current connected GitHub actions do not expose repository description/topics mutations; plugin discovery found no additional connected action for them. Description: `Project context and controlled changes for AI coding agents. Keep the thread. Verify the change.` Topics: `ai-coding`, `ai-agents`, `context-engineering`, `developer-tools`, `llm`, `knowledge-graph`, `codebase`, `python`. Leave Website empty until a separate public landing exists. Do not rename the repository again.
-3. Record one real, sanitized demo using the [social brief](SOCIAL.md), then collect five first-reader reactions. A negative reaction is actionable evidence, not a request for reassurance.
+Completed: repository rename, About description and all requested topics. The canonical public destination is [Question86/Werkfaden](https://github.com/Question86/Werkfaden).
+
+Immediate task: provide one real, sanitized search demonstration, using the focused brief below. The longer Workshop demonstration and first-reader trials in the [social brief](SOCIAL.md) remain subsequent marketing work, not extra requirements for this first recording.
+
+Before significant brand spend, complete exact/similar-mark, domain and social-handle checks. No domain or trademark registration is recorded by this rollout. This remaining check does not mean the completed repository settings need to be repeated.
+
+## Next asset: show the search, not the rename
+
+Record approximately 30-60 seconds as an editing target, not a promised search or onboarding time. Use an already-ingested, non-sensitive demonstration project that the founder owns and may show. Do not create a new feature for this recording or modify governed files outside Workshop.
+
+Show one concrete project question, the actual returned Markdown section or source reference, and the corresponding source context that the result permits the agent to inspect. Keep the question and evidence legible. Show a relationship or line reference only when it is actually returned; do not add an explanatory arrow and present it as measured output. Follow the existing governed inspection procedure.
+
+The intended takeaway is: the next agent action can start from a located source, not a reconstructed story about the project. This is a mechanism demonstration, not a comparative accuracy or token-saving result.
+
+Record the engine tag or commit separately with the asset. Keep the original take; disclose edits or omitted waits in a published cut. Hide credentials, private identities, customer data and private repository paths. Terminal output must remain authentic, including the retained KAIROS command names. Face, voice-over, music and a finished logo are not required.
+
+For the first asset, there is no need to also demonstrate intake, a complete source-set migration and a Workshop postcheck. One complete, understandable search example takes priority. No new asset is claimed to exist until it is supplied and inspected.
 
 ## Rollout boundaries
 
