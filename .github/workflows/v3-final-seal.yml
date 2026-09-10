@@ -1,16 +1,16 @@
-name: V3 alpha.4 final seal
+name: V3 alpha.5 final seal
 
 on:
   push:
     branches: [v3]
 
 env:
-  RELEASE_VERSION: 0.1.0-alpha.4
-  RELEASE_TAG: v0.1.0-alpha.4
+  RELEASE_VERSION: 0.1.0-alpha.5
+  RELEASE_TAG: v0.1.0-alpha.5
   EXPECTED_HARNESS_COUNT: '145'
-  EXPECTED_KICKSTART_COUNT: '32'
-  EXPECTED_WORKSHOP_COUNT: '23'
-  EXPECTED_REGRESSION_TOTAL: '200'
+  EXPECTED_KICKSTART_COUNT: '34'
+  EXPECTED_WORKSHOP_COUNT: '26'
+  EXPECTED_REGRESSION_TOTAL: '205'
 
 jobs:
   eligibility:
@@ -25,7 +25,7 @@ jobs:
         name: Check explicit final-seal marker
         shell: bash
         run: |
-          if grep -Fq 'FINAL_SEAL_READY: true' docs/V3_WORKLOG.md; then
+          if grep -Fq 'FINAL_SEAL_READY_ALPHA5: true' docs/V3_WORKLOG.md; then
             echo 'ready=true' >> "$GITHUB_OUTPUT"
           else
             echo 'ready=false' >> "$GITHUB_OUTPUT"
