@@ -20,8 +20,18 @@ jobs:
           python-version: '3.12'
       - name: Apply idempotent include-edge patch
         run: python scripts/alpha5_include_edge_patch.py
+      - name: Apply compatibility and bounded-projection finalizer
+        run: python scripts/alpha5_include_edge_compat.py
       - name: Compile patched surfaces
         run: python -m compileall -q kickstart kairos/kairos_harness workshop/src scripts
+      - name: Rebuild alpha5 framework projection
+        env:
+          PYTHONPATH: kairos/kairos_harness
+        run: |
+          python scripts/build_framework_index.py \
+            --output kairos/kairos_harness/kairos/framework.db \
+            --manifest kairos/kairos_harness/kairos/framework_manifest.json \
+            --verify-determinism
       - name: Run direct include-edge regression
         env:
           PYTHONPATH: kairos/kairos_harness:workshop/src
@@ -53,6 +63,9 @@ jobs:
             kairos/kairos_harness/kairos/database.py \
             kairos/kairos_harness/kairos/graph.py \
             kairos/kairos_harness/kairos/heartbeat.py \
+            kairos/kairos_harness/kairos/framework.py \
+            kairos/kairos_harness/kairos/framework.db \
+            kairos/kairos_harness/kairos/framework_manifest.json \
             workshop/src/runtime_sync_workshop/corpus.py \
             workshop/src/runtime_sync_workshop/engine.py
           git commit -m 'feat: bind direct compiler include edges through Workshop and Search'
