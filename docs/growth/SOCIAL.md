@@ -19,14 +19,14 @@ The engine is still KAIROS under the hood. Same commands, same pinned release. T
 Keep the thread. Verify the change.
 
 Try the first framework query and tell me where the explanation stops making sense:
-https://github.com/Question86/KAIROS-GOLDEN/tree/growth-rollout
+https://github.com/Question86/Werkfaden
 
 #AIEngineering #ContextEngineering
 
 ## Bluesky launch post
 
 <!-- bluesky:start -->
-KAIROS gets a new public name: Werkfaden. Project context and controlled changes for AI coding agents. Same engine, less naming confusion. Keep the thread. Verify the change. https://github.com/Question86/KAIROS-GOLDEN/tree/growth-rollout
+KAIROS gets a new public name: Werkfaden. Project context and controlled changes for AI coding agents. Same engine, less naming confusion. Keep the thread. Verify the change. https://github.com/Question86/Werkfaden
 <!-- bluesky:end -->
 
 ## LinkedIn opening
@@ -39,7 +39,7 @@ The useful question is not whether an agent sounds like it remembers. It is whic
 
 The repository now has a first-use guide and a claim-by-claim evidence page. The current license is for private, non-commercial use; professional evaluation requires written permission. I am looking for concrete first-use feedback, not applause for a diagram.
 
-https://github.com/Question86/KAIROS-GOLDEN/tree/growth-rollout
+https://github.com/Question86/Werkfaden
 
 ## Profile copy
 
@@ -55,6 +55,6 @@ Use a 45-75 second recording as an editing target, not a promised onboarding dur
 
 ## Distribution discipline
 
-Use the branch URL above until the public landing is promoted and any repository rename has been verified. Never advertise `Question86/werkfaden` before it exists. After a rename, validate old inbound links before changing outbound pointers.
+The canonical public destination is https://github.com/Question86/Werkfaden. The rename and repository ID were verified on 2026-09-10. Use this main project address for new launch posts and profile links, not the development branch. For technical evidence, link the exact release, commit or test run under the new repository address. The old API route reports a permanent redirect to the same repository ID; no exhaustive browser, raw-file, Git transport or artifact redirect test is claimed. Do not rewrite already published evidence or rename historical release artifacts for branding.
 
 No bulk unsolicited messages, bought stars, engagement pods or mass tagging. Answer relevant technical discussions with a useful explanation first and disclose that you built the linked tool. Do not present an unmeasured benefit as a benchmark.

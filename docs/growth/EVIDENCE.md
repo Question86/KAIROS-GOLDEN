@@ -17,9 +17,9 @@ This page distinguishes shipped mechanisms, scripted regression evidence and out
 
 ## Release evidence
 
-The [alpha.6 final-seal run](https://github.com/Question86/KAIROS-GOLDEN/actions/runs/34479342556) records 145 harness, 34 Kickstart and 26 Workshop regression tests: 205 total. Its scripted cold-start matrix has 10 cases, each reported as `POSTCHECK_VERIFIED` and bit-exact. It also records the write-boundary audit and deterministic framework/ZIP checks.
+The [alpha.6 final-seal run](https://github.com/Question86/Werkfaden/actions/runs/34479342556) records 145 harness, 34 Kickstart and 26 Workshop regression tests: 205 total. Its scripted cold-start matrix has 10 cases, each reported as `POSTCHECK_VERIFIED` and bit-exact. It also records the write-boundary audit and deterministic framework/ZIP checks.
 
-The [sealed artifact pair](https://github.com/Question86/KAIROS-GOLDEN/actions/runs/34479342556/artifacts/10152933992) contains the release ZIP and seal manifest. Actions artifacts have retention limits; do not treat their URLs as permanent release hosting.
+The [sealed artifact pair](https://github.com/Question86/Werkfaden/actions/runs/34479342556/artifacts/10152933992) contains the release ZIP and seal manifest. Actions artifacts have retention limits; do not treat their URLs as permanent release hosting.
 
 Source ZIP: `KAIROS-GOLDEN-v0.1.0-alpha.6.zip`.
 

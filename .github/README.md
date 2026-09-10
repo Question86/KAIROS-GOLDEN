@@ -24,7 +24,7 @@ These are application-level workflow rules, not an automatically installed opera
 
 ## Try the smallest useful thing
 
-Download or clone the [pinned engine release](https://github.com/Question86/KAIROS-GOLDEN/tree/v0.1.0-alpha.6), open its directory, and ask the framework how to begin:
+Download or clone the [pinned engine release](https://github.com/Question86/Werkfaden/tree/v0.1.0-alpha.6), open its directory, and ask the framework how to begin:
 
 ```text
 python kairos_cli.py search "How do I onboard an arbitrary existing codebase into KAIROS?"
@@ -42,9 +42,9 @@ C/C++/CUDA retains compiler-backed translation-unit membership and compiler-guid
 
 ## Evidence before adjectives
 
-The pinned engine is `v0.1.0-alpha.6`, commit `13db71aa841c7859e68f5728d0c925ea76343e20`. Its [final-seal run](https://github.com/Question86/KAIROS-GOLDEN/actions/runs/34479342556) records 205 regression tests and a 10-case scripted cold-start matrix.
+The pinned engine is `v0.1.0-alpha.6`, commit `13db71aa841c7859e68f5728d0c925ea76343e20`. Its [final-seal run](https://github.com/Question86/Werkfaden/actions/runs/34479342556) records 205 regression tests and a 10-case scripted cold-start matrix.
 
-Those are framework-integrity results, **not** a benchmark proving better model answers, fewer tokens, faster development or bug-free applications. This marketing branch is not a new sealed software release. [Claim-by-claim evidence](../docs/growth/EVIDENCE.md).
+Those are framework-integrity results, **not** a benchmark proving better model answers, fewer tokens, faster development or bug-free applications. This presentation update is not a new sealed software release. [Claim-by-claim evidence](../docs/growth/EVIDENCE.md).
 
 ## Who should try it
 
@@ -54,6 +54,6 @@ Start with a small private, non-commercial project and a coding agent you alread
 
 ## Show where the thread breaks
 
-Try the first query, then [report your first-use experience](https://github.com/Question86/KAIROS-GOLDEN/issues/new?template=adoption-feedback.yml). A useful report says what you expected, what happened, and where you stopped. Never post private source, credentials or customer data.
+Try the first query, then [report your first-use experience](https://github.com/Question86/Werkfaden/issues/new?template=adoption-feedback.yml). A useful report says what you expected, what happened, and where you stopped. Never post private source, credentials or customer data.
 
 Follow the work on [X](https://x.com/yawende86) and [Bluesky](https://bsky.app/profile/ypswe.bsky.social). For technical attribution, cite the pinned engine commit; for the public project name, use **Werkfaden**.

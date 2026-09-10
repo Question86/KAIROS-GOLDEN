@@ -7,7 +7,7 @@ Werkfaden is the public name. The engine in this guide remains KAIROS `v0.1.0-al
 For the initial evaluation use a fresh directory and Python 3.12, matching the release's documented CI setup. Do not overlay the files onto an existing governed project.
 
 ```text
-git clone --branch v0.1.0-alpha.6 --depth 1 https://github.com/Question86/KAIROS-GOLDEN.git werkfaden
+git clone --branch v0.1.0-alpha.6 --depth 1 https://github.com/Question86/Werkfaden.git werkfaden
 cd werkfaden
 python kairos_cli.py search "How do I onboard an arbitrary existing codebase into KAIROS?"
 ```
@@ -62,6 +62,6 @@ Existing-file changes use [the normal Workshop lifecycle](../UNIVERSAL_ONBOARDIN
 
 ## 5. Report the first point of friction
 
-A valuable first-use report is small: release/commit, operating system, ecosystem, last successful step, sanitized error, and what you expected. [Submit feedback](https://github.com/Question86/KAIROS-GOLDEN/issues/new?template=adoption-feedback.yml). Do not attach your private workspace database, customer source or credentials.
+A valuable first-use report is small: release/commit, operating system, ecosystem, last successful step, sanitized error, and what you expected. [Submit feedback](https://github.com/Question86/Werkfaden/issues/new?template=adoption-feedback.yml). Do not attach your private workspace database, customer source or credentials.
 
 This guide is a human-facing introduction. The [universal operating contract](../UNIVERSAL_ONBOARDING.md) remains procedural authority. Older version-specific pages are not a replacement for the pinned release's newer universal onboarding contract.

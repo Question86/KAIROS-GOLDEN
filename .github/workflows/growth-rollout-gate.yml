@@ -2,7 +2,13 @@ name: Growth rollout integrity
 
 on:
   push:
-    branches: [growth-rollout]
+    branches: [growth-rollout, v3]
+    paths:
+      - '.github/README.md'
+      - '.github/ISSUE_TEMPLATE/adoption-feedback.yml'
+      - '.github/workflows/growth-rollout-gate.yml'
+      - 'docs/growth/**'
+      - 'CITATION.cff'
   pull_request:
     branches: [v3]
     paths:
@@ -66,10 +72,16 @@ jobs:
           from pathlib import Path
           from urllib.parse import unquote, urlsplit
           root = Path('.').resolve()
-          files = [Path('.github/README.md'), *sorted(Path('docs/growth').glob('*.md'))]
+          canonical = 'https://github.com/Question86/Werkfaden'
+          files = [Path('.github/README.md'), Path('CITATION.cff'), *sorted(Path('docs/growth').glob('*.md'))]
           checked = 0
           for path in files:
               raw = path.read_text(encoding='utf-8')
+              for target in re.findall(r'https?://[^\s<>"\x27)]+', raw):
+                  parsed = urlsplit(target)
+                  if parsed.hostname in {'github.com', 'api.github.com', 'raw.githubusercontent.com'}:
+                      if re.search(r'(?:^|/)question86/kairos-golden(?:/|\.|$)', parsed.path, flags=re.I):
+                          raise SystemExit(f'Obsolete public repository URL: {path}: {target}')
               text = re.sub(r'```.*?```', '', raw, flags=re.S)
               for target in re.findall(r'\[[^\]]*\]\(([^)]+)\)', text):
                   parsed = urlsplit(target)
@@ -95,11 +107,17 @@ jobs:
           for required in ('# Werkfaden', 'Keep the thread. Verify the change.', 'Yannick Wende', 'kairos_cli.py', 'personal, private, non-commercial', 'not a new sealed software release'):
               if required not in landing:
                   raise SystemExit(f'Missing public contract: {required}')
+          citation = Path('CITATION.cff').read_text(encoding='utf-8')
+          for field in ('repository-code', 'url'):
+              if f'{field}: "{canonical}"' not in citation:
+                  raise SystemExit(f'Non-canonical citation {field}')
           social = Path('docs/growth/SOCIAL.md').read_text(encoding='utf-8')
+          if f'{canonical}/tree/' in social:
+              raise SystemExit('Social launch copy must link the public repository root')
           post = social.split('<!-- bluesky:start -->', 1)[1].split('<!-- bluesky:end -->', 1)[0].strip()
-          if not post.isascii() or not 0 < len(post) <= 300:
+          if not post.isascii() or not 0 < len(post) <= 300 or canonical not in post:
               raise SystemExit(f'Bluesky draft requires review: {len(post)} codepoints')
-          print(f'PASS: {checked} local links/anchors; public identity present; Bluesky draft {len(post)}/300 ASCII characters')
+          print(f'PASS: {checked} local links/anchors; no obsolete public repository URLs; canonical citation and social destination; Bluesky draft {len(post)}/300 ASCII characters')
           PY
 
       - name: Verify unchanged framework bundle

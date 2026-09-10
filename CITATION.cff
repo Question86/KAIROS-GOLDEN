@@ -5,8 +5,8 @@ title: "Werkfaden: project context and controlled changes for AI coding agents"
 authors:
   - family-names: Wende
     given-names: Yannick
-repository-code: "https://github.com/Question86/KAIROS-GOLDEN"
-url: "https://github.com/Question86/KAIROS-GOLDEN/tree/growth-rollout"
+repository-code: "https://github.com/Question86/Werkfaden"
+url: "https://github.com/Question86/Werkfaden"
 version: "0.1.0-alpha.6"
 commit: "13db71aa841c7859e68f5728d0c925ea76343e20"
 date-released: 2026-09-10
