@@ -22,6 +22,8 @@ jobs:
         run: python scripts/alpha5_include_edge_patch.py
       - name: Apply compatibility and bounded-projection finalizer
         run: python scripts/alpha5_include_edge_compat.py
+      - name: Bind include edges into authority migration
+        run: python scripts/alpha5_authority_migration_edges.py
       - name: Compile patched surfaces
         run: python -m compileall -q kickstart kairos/kairos_harness workshop/src scripts
       - name: Rebuild alpha5 framework projection
@@ -67,6 +69,7 @@ jobs:
             kairos/kairos_harness/kairos/framework.db \
             kairos/kairos_harness/kairos/framework_manifest.json \
             workshop/src/runtime_sync_workshop/corpus.py \
-            workshop/src/runtime_sync_workshop/engine.py
+            workshop/src/runtime_sync_workshop/engine.py \
+            workshop/src/runtime_sync_workshop/migration.py
           git commit -m 'feat: bind direct compiler include edges through Workshop and Search'
           git push origin HEAD:alpha5-include-edge-authority
