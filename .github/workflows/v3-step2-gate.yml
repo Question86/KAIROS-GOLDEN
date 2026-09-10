@@ -36,10 +36,10 @@ jobs:
           PYTHONPATH: kairos/kairos_harness
         run: |
           python - <<'PY'
-          from kairos.framework import verify_framework_bundle
+          from kairos.framework import FRAMEWORK_VERSION, verify_framework_bundle
           result = verify_framework_bundle()
           assert result["verified"]
-          assert result["version"] == "0.1.0-alpha.4"
+          assert result["version"] == FRAMEWORK_VERSION
           print(result)
           PY
       - name: Rebuild framework projection independently
