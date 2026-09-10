@@ -20,6 +20,18 @@ jobs:
           python-version: '3.12'
       - name: Apply idempotent source-set hardening patch
         run: python scripts/alpha4_source_set_hardening.py
+      - name: Correct candidate-relative recursion assertion
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('kickstart/tests/test_universal_source_set.py')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace(
+              'self.assertFalse(any("transactions" in path.parts for path in candidate.rglob("*")))',
+              'self.assertFalse(any("transactions" in path.relative_to(candidate).parts for path in candidate.rglob("*")))',
+          )
+          path.write_text(text, encoding='utf-8')
+          PY
       - name: Compile patched surfaces
         run: python -m compileall -q kickstart workshop/src
       - name: Run source-set regression
