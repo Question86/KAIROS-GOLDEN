@@ -1,0 +1,59 @@
+name: Growth rollout integrity
+
+on:
+  push:
+    branches: [growth-rollout]
+
+permissions:
+  contents: write
+
+jobs:
+  growth-integrity:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: growth-rollout
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Rebuild framework projection after public-doc changes
+        env:
+          PYTHONPATH: kairos/kairos_harness
+        run: |
+          python scripts/build_framework_index.py \
+            --output kairos/kairos_harness/kairos/framework.db \
+            --manifest kairos/kairos_harness/kairos/framework_manifest.json \
+            --verify-determinism
+
+      - name: Verify framework bundle
+        env:
+          PYTHONPATH: kairos/kairos_harness
+        run: |
+          python - <<'PY'
+          from kairos.framework import FRAMEWORK_VERSION, verify_framework_bundle
+          result = verify_framework_bundle()
+          assert result['verified']
+          assert result['version'] == FRAMEWORK_VERSION
+          print(result)
+          PY
+
+      - name: Run framework bootstrap regression
+        env:
+          PYTHONPATH: kairos/kairos_harness
+        run: python -m unittest kairos.kairos_harness.tests.test_framework_bootstrap -v
+
+      - name: Commit derived framework projection only
+        shell: bash
+        run: |
+          if git diff --quiet -- kairos/kairos_harness/kairos/framework.db kairos/kairos_harness/kairos/framework_manifest.json; then
+            echo 'Framework projection already current.'
+            exit 0
+          fi
+          git config user.name 'Q86'
+          git config user.email '113774086+Question86@users.noreply.github.com'
+          git add kairos/kairos_harness/kairos/framework.db kairos/kairos_harness/kairos/framework_manifest.json
+          git commit -m 'growth: rebuild framework projection for public docs'
+          git push origin HEAD:growth-rollout
