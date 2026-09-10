@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import sqlite3
 import sys
@@ -20,6 +19,7 @@ from kairos.graph import query_graph_context  # noqa: E402
 from kairos.query import compile_query  # noqa: E402
 from runtime_sync_workshop.corpus import build_corpus_manifest  # noqa: E402
 from runtime_sync_workshop.engine import WorkshopEngine  # noqa: E402
+from runtime_sync_workshop.util import WorkshopError  # noqa: E402
 
 
 def project_spec() -> dict:
@@ -97,7 +97,7 @@ class IncludeEdgeAuthorityTests(unittest.TestCase):
     def test_initial_intake_projects_exact_direct_edges(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            project, main, commands = self.make_project(root)
+            project, _, commands = self.make_project(root)
             workspace = root / "workspace"
             result = initialize_project(
                 project_root=project,
@@ -207,7 +207,7 @@ class IncludeEdgeAuthorityTests(unittest.TestCase):
             finally:
                 connection.close()
 
-    def test_machine_edge_tamper_fails_corpus_verification(self) -> None:
+    def test_machine_edge_tamper_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             project, _, commands = self.make_project(root)
@@ -218,9 +218,9 @@ class IncludeEdgeAuthorityTests(unittest.TestCase):
             payload = json.loads(path.read_text(encoding="utf-8"))
             payload["topology_sha256"] = "0" * 64
             path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-            manifest = build_corpus_manifest(engine.config)
-            self.assertFalse(manifest["verified"])
-            self.assertTrue(any(issue["code"] == "INCLUDE_EDGE_AUTHORITY_DIGEST_MISMATCH" for issue in manifest["issues"]))
+            with self.assertRaises(WorkshopError) as raised:
+                build_corpus_manifest(engine.config)
+            self.assertEqual(raised.exception.code, "INCLUDE_EDGE_AUTHORITY_DIGEST_MISMATCH")
 
 
 if __name__ == "__main__":
