@@ -1,12 +1,12 @@
-name: V3 alpha.5 final seal
+name: V3 alpha.6 final seal
 
 on:
   push:
     branches: [v3]
 
 env:
-  RELEASE_VERSION: 0.1.0-alpha.5
-  RELEASE_TAG: v0.1.0-alpha.5
+  RELEASE_VERSION: 0.1.0-alpha.6
+  RELEASE_TAG: v0.1.0-alpha.6
   EXPECTED_HARNESS_COUNT: '145'
   EXPECTED_KICKSTART_COUNT: '34'
   EXPECTED_WORKSHOP_COUNT: '26'
@@ -29,7 +29,7 @@ jobs:
         shell: bash
         run: |
           ready=false
-          if grep -Fq 'FINAL_SEAL_READY_ALPHA5: true' docs/V3_WORKLOG.md; then
+          if grep -Fq 'FINAL_SEAL_READY_ALPHA6: true' docs/RELEASE_NOTES_0.1.0_ALPHA6.md; then
             git fetch --tags --force
             if git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
               existing=$(git rev-list -n 1 "$RELEASE_TAG")
