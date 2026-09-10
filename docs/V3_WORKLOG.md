@@ -137,3 +137,37 @@ sealed commit. The alpha.4 final-seal workflow requires 145 KAIROS harness,
 tests before creating the content-addressed artifact pair and exact alpha.4 tag.
 
 FINAL_SEAL_READY_ALPHA4: true
+
+## Post-alpha.4 hardening - alpha.5 candidate
+
+`0.1.0-alpha.5` is the separate post-alpha.4 hardening release. The immutable
+`v0.1.0-alpha.3` and `v0.1.0-alpha.4` tags remain on their original sealed commits.
+
+Alpha.5 closes two independently observed authority gaps without changing the
+single post-seal mutation boundary:
+
+- Universal source-set checkout excludes KAIROS/Workshop state roots, persists a
+  recoverable `CHECKOUT_STAGING` state before candidate copying, and provides a
+  bounded fail-closed orphan-lease recovery when live package and seal identity
+  are still exact.
+- C-family intake and Workshop transactions persist exact direct compiler include
+  edges separately from transitive compiled-root reachability and byte ownership.
+  The edge set has a canonical topology SHA-256, is projected into SQLite for
+  Search, and is verified through normal edit and authority-migration shadow/
+  postcheck paths.
+
+Pre-seal alpha.5 gates proven on GitHub Actions:
+
+- direct include-edge focused regression: 3/3 PASS;
+- KAIROS harness: 145/145 PASS;
+- Kickstart / Universal Intake: 34/34 PASS;
+- Workshop: 26/26 PASS;
+- deterministic alpha.5 framework projection rebuild: PASS;
+- source-set recursion and orphan-recovery regressions: PASS;
+- authority-migration include-edge transport: PASS.
+
+The final alpha.5 seal workflow must rerun the release hardening, regression,
+framework determinism and cold-bootstrap/ecosystem gates against the exact `v3`
+commit before creating the deterministic source ZIP, seal manifest and tag.
+
+FINAL_SEAL_READY_ALPHA5: true
