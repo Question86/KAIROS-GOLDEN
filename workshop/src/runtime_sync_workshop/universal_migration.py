@@ -269,6 +269,25 @@ class UniversalSourceSetMigration:
         if root.exists():
             raise WorkshopError("TRANSACTION_COLLISION", f"transaction already exists: {transaction_id}")
         self.engine._acquire_lease(transaction_id)
+        root.mkdir(parents=True)
+        state = {
+            "schema": "runtime-sync-universal-source-set/v1",
+            "transaction_kind": "universal_source_set",
+            "transaction_id": transaction_id,
+            "state": "CHECKOUT_STAGING",
+            "created_at": created_at,
+            "updated_at": created_at,
+            "deterministic_updated_at": created_at,
+            "purpose": purpose,
+            "baseline_package_sha256": baseline_manifest["package_sha256"],
+            "journal": [],
+        }
+        self.engine._save_transaction(
+            root,
+            state,
+            event="UNIVERSAL_SOURCE_SET_CHECKOUT_STAGING",
+            details={"live_project_unchanged": True},
+        )
         try:
             candidate = root / "work" / "candidate"
             candidate.mkdir(parents=True)
@@ -281,27 +300,42 @@ class UniversalSourceSetMigration:
             atomic_write_json(root / "baseline" / "manifest.json", baseline_manifest)
             copy_exact(self.config.kairos_database, root / "baseline" / "kairos.db")
             _, _, _, _, iter_project_files, _, _, _, _, _ = _load_universal()
-            for source in iter_project_files(self.config.codebase_root):
+            tool_owned_roots = (
+                self.config.kairos_workspace,
+                self.config.machine_root,
+                self.config.state_directory,
+                self.config.transaction_directory,
+                self.config.blueprint_root,
+                self.config.managed_blueprint_root,
+            )
+            for source in iter_project_files(
+                self.config.codebase_root,
+                excluded_roots=tool_owned_roots,
+            ):
                 relative = source.relative_to(self.config.codebase_root).as_posix()
                 _copy_tree_file(source, candidate / relative)
             baseline_files = _file_inventory(candidate)
             atomic_write_json(root / "baseline" / "files.json", baseline_files)
-            state = {
-                "schema": "runtime-sync-universal-source-set/v1",
-                "transaction_kind": "universal_source_set",
-                "transaction_id": transaction_id,
-                "state": "CHECKED_OUT",
-                "created_at": created_at,
-                "updated_at": created_at,
-                "deterministic_updated_at": created_at,
-                "purpose": purpose,
-                "baseline_package_sha256": baseline_manifest["package_sha256"],
-                "journal": [],
-            }
-            self.engine._save_transaction(root, state, event="UNIVERSAL_SOURCE_SET_CHECKOUT", details={"candidate": candidate.as_posix()})
-        except Exception:
-            if self.engine.lease_path.exists():
-                self.engine._release_lease(transaction_id)
+            state["state"] = "CHECKED_OUT"
+            self.engine._save_transaction(
+                root,
+                state,
+                event="UNIVERSAL_SOURCE_SET_CHECKOUT",
+                details={
+                    "candidate": candidate.as_posix(),
+                    "excluded_tool_roots": [value.resolve().as_posix() for value in tool_owned_roots],
+                },
+            )
+        except BaseException as exc:
+            state["state"] = "CHECKOUT_FAILED"
+            state["failure"] = {"code": type(exc).__name__, "message": str(exc)}
+            try:
+                self.engine._save_transaction(
+                    root, state, event="UNIVERSAL_SOURCE_SET_CHECKOUT_FAILED", details=state["failure"]
+                )
+            finally:
+                if self.engine.lease_path.exists():
+                    self.engine._release_lease(transaction_id)
             raise
         return {
             "schema": "runtime-sync-universal-source-set-checkout/v1",
@@ -309,6 +343,83 @@ class UniversalSourceSetMigration:
             "state": "CHECKED_OUT",
             "candidate_root": str(root / "work" / "candidate"),
             "boundary": "Only this candidate tree may be edited; the governed live project remains sealed and read-only until verified apply.",
+        }
+
+    def recover_orphan_checkout(
+        self,
+        transaction_id: str,
+        *,
+        expected_sealed_package_sha256: str,
+    ) -> dict[str, Any]:
+        """Release only a proven pre-apply orphan created during source-set checkout.
+
+        This is deliberately narrower than normal recovery. It accepts a missing state
+        file only for the historical checkout failure mode, refuses any rollback/apply
+        evidence, and requires the current live package to remain exactly equal to the
+        operator-confirmed seal before releasing the lease.
+        """
+        root = self.engine._transaction_path(transaction_id)
+        self.engine._require_lease(transaction_id)
+        state_path = root / "state.json"
+        state = read_json(state_path) if state_path.is_file() else None
+        if state is not None:
+            if state.get("transaction_kind") != "universal_source_set":
+                raise WorkshopError("TRANSACTION_KIND_INVALID", "orphan lease is not a universal source-set checkout")
+            if state.get("state") not in {"CHECKOUT_STAGING", "CHECKOUT_FAILED"}:
+                raise WorkshopError(
+                    "ORPHAN_RECOVERY_STATE_INVALID",
+                    f"orphan checkout recovery is not allowed from {state.get('state')}",
+                )
+        if (root / "rollback" / "targets.json").exists():
+            raise WorkshopError(
+                "ORPHAN_RECOVERY_APPLY_EVIDENCE",
+                "rollback targets exist; use normal recovery because apply may have begun",
+            )
+        expected = expected_sealed_package_sha256.strip().lower()
+        if len(expected) != 64 or any(value not in "0123456789abcdef" for value in expected):
+            raise WorkshopError("PACKAGE_HASH_INVALID", "expected sealed package SHA-256 must be 64 hexadecimal characters")
+        seal = read_json(self.engine.seal_path)
+        current = build_corpus_manifest(self.config)
+        if not current.get("verified"):
+            raise WorkshopError("ORPHAN_RECOVERY_CORPUS_INVALID", "live corpus must verify before orphan lease recovery", details=current.get("issues"))
+        if str(seal.get("package_sha256", "")).lower() != expected:
+            raise WorkshopError("ORPHAN_RECOVERY_SEAL_MISMATCH", "operator-confirmed package differs from Workshop seal")
+        if str(current.get("package_sha256", "")).lower() != expected:
+            raise WorkshopError(
+                "ORPHAN_RECOVERY_LIVE_DRIFT",
+                "live corpus differs from the sealed package; orphan checkout recovery refuses to release the lease",
+                details={"expected": expected, "actual": current.get("package_sha256")},
+            )
+        root.mkdir(parents=True, exist_ok=True)
+        recovered = state if isinstance(state, dict) else {
+            "schema": "runtime-sync-universal-source-set/v1",
+            "transaction_kind": "universal_source_set",
+            "transaction_id": transaction_id,
+            "created_at": utc_now(),
+            "purpose": "Recovered historical orphan created before source-set state materialization",
+            "baseline_package_sha256": expected,
+            "journal": [],
+        }
+        recovered["state"] = "ABORTED_ORPHANED_CHECKOUT"
+        recovered["orphan_recovery"] = {
+            "expected_sealed_package_sha256": expected,
+            "live_package_sha256": current["package_sha256"],
+            "live_corpus_verified": True,
+            "rollback_targets_absent": True,
+            "candidate_preserved": (root / "work" / "candidate").exists(),
+        }
+        self.engine._save_transaction(
+            root,
+            recovered,
+            event="UNIVERSAL_SOURCE_SET_ORPHAN_RECOVERED",
+            details=recovered["orphan_recovery"],
+        )
+        self.engine._release_lease(transaction_id)
+        return {
+            "schema": "runtime-sync-universal-source-set-orphan-recovery/v1",
+            "transaction_id": transaction_id,
+            "state": recovered["state"],
+            **recovered["orphan_recovery"],
         }
 
     def _candidate_survey(self, candidate_root: Path, baseline_manifest: dict[str, Any]):

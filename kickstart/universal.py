@@ -51,7 +51,7 @@ ECOSYSTEMS: tuple[EcosystemSpec, ...] = (
 )
 
 EXCLUDED_DIRECTORIES = frozenset({
-    ".git", ".hg", ".svn", ".idea", ".vscode",
+    ".git", ".hg", ".svn", ".idea", ".vscode", ".kairos",
     ".venv", "venv", "env", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
     "node_modules", ".pnpm-store", ".yarn", "bower_components",
     "target", "build", "dist", "out", "bin", "obj", ".gradle", ".mvn",
@@ -84,20 +84,49 @@ def _is_link(path: Path) -> bool:
     return stat.S_ISLNK(info.st_mode) or bool(getattr(info, "st_file_attributes", 0) & 0x400)
 
 
-def _iter_project_files(project_root: Path) -> Iterable[Path]:
+def _iter_project_files(
+    project_root: Path,
+    *,
+    excluded_roots: Iterable[Path] = (),
+) -> Iterable[Path]:
+    """Yield regular project files while pruning generated/tool-owned roots.
+
+    ``excluded_roots`` is path-based rather than name-based. This matters when a KAIROS
+    workspace lives below the governed project: Workshop transaction state may be named
+    anything, and a source-set checkout must never walk into its own candidate tree.
+    """
     root = _safe_root(project_root)
+    dynamic_exclusions: list[Path] = []
+    for value in excluded_roots:
+        candidate = Path(value).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            continue
+        if candidate == root:
+            raise KickstartError(
+                "PROJECT_EXCLUSION_INVALID",
+                "an excluded tool-owned root may not equal project_root",
+            )
+        if candidate not in dynamic_exclusions:
+            dynamic_exclusions.append(candidate)
+
+    def is_excluded(path: Path) -> bool:
+        resolved = path.resolve()
+        return any(resolved == boundary or boundary in resolved.parents for boundary in dynamic_exclusions)
+
     for current, directory_names, file_names in os.walk(root, topdown=True, followlinks=False):
         current_path = Path(current)
         retained: list[str] = []
         for name in directory_names:
             candidate = current_path / name
-            if name in EXCLUDED_DIRECTORIES or _is_link(candidate):
+            if name in EXCLUDED_DIRECTORIES or _is_link(candidate) or is_excluded(candidate):
                 continue
             retained.append(name)
         directory_names[:] = retained
         for name in sorted(file_names):
             candidate = current_path / name
-            if _is_link(candidate):
+            if is_excluded(candidate) or _is_link(candidate):
                 continue
             try:
                 info = candidate.stat()
