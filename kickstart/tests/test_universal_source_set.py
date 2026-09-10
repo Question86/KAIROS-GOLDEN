@@ -145,6 +145,57 @@ class UniversalSourceSetTests(unittest.TestCase):
             self.assertEqual((project / "pyproject.toml").read_bytes(), before)
             migration.abort(checkout["transaction_id"])
 
+    def test_nested_kairos_workspace_is_pruned_from_source_set_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            project = root / "project"
+            project.mkdir()
+            (project / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+            workspace = project / "kairos_workspace"
+            intake = initialize_universal_markdown(
+                project_root=project,
+                workspace=workspace,
+                project_spec=_project_spec(),
+            )
+            engine = WorkshopEngine(Path(intake["workshop_config"]))
+            engine.seal()
+            migration = UniversalSourceSetMigration(engine)
+            checkout = migration.checkout(purpose="Prove nested KAIROS state is excluded from candidate copy")
+            candidate = Path(checkout["candidate_root"])
+            self.assertTrue((candidate / "app.py").is_file())
+            self.assertFalse((candidate / "kairos_workspace").exists())
+            self.assertFalse(any("transactions" in path.relative_to(candidate).parts for path in candidate.rglob("*")))
+            migration.abort(checkout["transaction_id"])
+
+    def test_orphan_checkout_lease_recovery_requires_exact_unchanged_seal(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            project = root / "project"
+            project.mkdir()
+            (project / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+            intake = initialize_universal_markdown(
+                project_root=project,
+                workspace=root / "workspace",
+                project_spec=_project_spec(),
+            )
+            engine = WorkshopEngine(Path(intake["workshop_config"]))
+            seal = engine.seal()
+            migration = UniversalSourceSetMigration(engine)
+            transaction_id = "TXN_" + "a" * 24
+            engine._acquire_lease(transaction_id)
+            tx_root = engine._transaction_path(transaction_id)
+            tx_root.mkdir(parents=True)
+            before = (project / "app.py").read_bytes()
+            recovered = migration.recover_orphan_checkout(
+                transaction_id,
+                expected_sealed_package_sha256=seal["package_sha256"],
+            )
+            self.assertEqual(recovered["state"], "ABORTED_ORPHANED_CHECKOUT")
+            self.assertFalse(engine.lease_path.exists())
+            self.assertEqual((project / "app.py").read_bytes(), before)
+            state = __import__("json").loads((tx_root / "state.json").read_text(encoding="utf-8"))
+            self.assertTrue(state["orphan_recovery"]["live_corpus_verified"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -43,6 +43,13 @@ def _parser() -> argparse.ArgumentParser:
         help="open a Workshop-owned candidate tree for static source create/delete/rename",
     )
     source_set_checkout.add_argument("--purpose", required=True)
+
+    source_set_recover = sub.add_parser(
+        "source-set-recover-orphan",
+        help="release a proven pre-apply orphan lease from an interrupted source-set checkout",
+    )
+    source_set_recover.add_argument("transaction_id")
+    source_set_recover.add_argument("--expected-sealed-package-sha256", required=True)
     for name, help_text in (
         ("source-set-prepare", "derive source/Markdown/membership deltas from the Workshop-owned candidate tree"),
         ("source-set-verify", "verify source-set topology and KAIROS projection in an isolated shadow"),
@@ -187,6 +194,11 @@ def execute(arguments: argparse.Namespace) -> dict[str, Any]:
         return engine.checkout(arguments.source, purpose=arguments.purpose, tests=arguments.test)
     if command == "source-set-checkout":
         return source_set.checkout(purpose=arguments.purpose)
+    if command == "source-set-recover-orphan":
+        return source_set.recover_orphan_checkout(
+            arguments.transaction_id,
+            expected_sealed_package_sha256=arguments.expected_sealed_package_sha256,
+        )
     if command == "source-set-prepare":
         return source_set.prepare(arguments.transaction_id)
     if command == "source-set-verify":
