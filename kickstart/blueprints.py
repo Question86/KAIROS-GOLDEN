@@ -378,6 +378,8 @@ def render_binding_documents(
     milestone_id: str,
     updated_at: str,
     header_closure: dict[str, list[str]],
+    include_edges: list[dict[str, object]] | None = None,
+    include_topology_sha256: str = "",
 ) -> dict[str, str]:
     _, pointer, render_document, _ = _load_harness()
     source_rows = "\n".join(f"| `{unit.relative_path}` | yes |" for unit in survey.units)
@@ -391,6 +393,13 @@ def render_binding_documents(
         f"- `{header}` ← " + ", ".join(f"`{owner}`" for owner in owners)
         for header, owners in sorted(header_closure.items())
     ) or "- none"
+    canonical_edges = include_edges or []
+    edge_body = (
+        f"Edge count: `{len(canonical_edges)}`\n"
+        f"Topology SHA-256: `{include_topology_sha256 or 'none'}`\n\n"
+        "Exact compiler-observed rows are retained in machine authority and the SQLite projection; "
+        "this human-readable index binds them by count and digest without duplicating the graph."
+    )
     index_metadata = {
         "schema": "kairos-context/v1",
         "id": "PROJECT_SOURCE_INDEX",
@@ -410,6 +419,7 @@ def render_binding_documents(
         "answers": [
             {"intent": "membership", "question": "Which translation units are compiler-recorded for this project?", "target": "s-project-membership", "language": "en"},
             {"intent": "dependency", "question": "Which local headers are in the static compiled include closure?", "target": "s-include-closure", "language": "en"},
+            {"intent": "dependency", "question": "Which direct C-family include edges are compiler-observed?", "target": "s-include-edges", "language": "en"},
             {"intent": "provenance", "question": "Which hashes bind the initial project source authority?", "target": "s-provenance", "language": "en"},
         ],
         "refs": {
@@ -425,6 +435,7 @@ def render_binding_documents(
         {"id": "s-authority", "title": "SOURCE AUTHORITY", "capsule": "compile_commands.json is the compiler-produced membership authority.", "content": f"- Kind: `{survey.source_kind}`\n- compile_commands SHA-256: `{source_hash}`\n- Translation units: `{len(survey.units)}`\n- External include roots not projected: `{len(survey.ignored_external_include_roots)}`"},
         {"id": "s-project-membership", "title": "PROJECT MEMBERSHIP", "capsule": "The exact translation-unit set is repeated in the Workshop DATAFLOW authority format.", "content": membership},
         {"id": "s-include-closure", "title": "STATIC INCLUDE CLOSURE", "capsule": "Only local headers resolved from configured include roots and source directories are projected.", "content": include_rows},
+        {"id": "s-include-edges", "title": "DIRECT COMPILER INCLUDE EDGES", "capsule": "Direct include consumers are kept separate from transitive compiled roots and byte owners.", "content": edge_body},
         {"id": "s-provenance", "title": "PROVENANCE", "capsule": "Source membership is bound to the input hash and exact source ledgers.", "content": f"The compiler authority hash is `{source_hash}`. Every generated blueprint repeats raw and logical hashes for its live file."},
     ])
     method_metadata = {

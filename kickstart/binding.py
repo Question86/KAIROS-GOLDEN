@@ -545,6 +545,22 @@ def initialize_project(
                 "one or more quoted project includes could not be resolved inside project_root",
                 details=unresolved,
             )
+        from .include_edges import authority_payload, collect_include_edges, owners_from_edges
+        include_edges, edge_issues = collect_include_edges(project_root, survey)
+        if edge_issues:
+            raise KickstartError(
+                "INCLUDE_EDGE_AUTHORITY_UNVERIFIED",
+                "direct compiler include-edge authority is not fully provable",
+                details=edge_issues,
+            )
+        edge_payload = authority_payload(include_edges)
+        closure_owners = {relative: sorted(owners) for relative, (_, owners) in headers.items()}
+        if owners_from_edges(include_edges) != closure_owners:
+            raise KickstartError(
+                "INCLUDE_EDGE_CLOSURE_MISMATCH",
+                "direct include-edge traversal disagrees with the compiler-backed transitive header closure",
+                details={"edges": owners_from_edges(include_edges), "closure": closure_owners},
+            )
         updated_at = utc_now()
         blueprint_set = render_blueprints(
             survey,
@@ -565,6 +581,8 @@ def initialize_project(
             milestone_id=milestone_id,
             updated_at=updated_at,
             header_closure={relative: owners for relative, (_, owners) in headers.items()},
+            include_edges=include_edges,
+            include_topology_sha256=edge_payload["topology_sha256"],
         )
         changed = [*documents.keys(), *(f"code/{record.filename}" for record in blueprint_set.records)]
         # New generated Markdown is still an out-of-band source change from the
@@ -586,6 +604,8 @@ def initialize_project(
 
         build_authority = intake_directory / "PROJECT_BUILD_AUTHORITY.cmake"
         atomic_write_text(build_authority, _cmake_authority(survey.units))
+        include_edge_authority = intake_directory / "include-edges.json"
+        atomic_write_json(include_edge_authority, edge_payload)
         header_only = {relative: filename_for(relative, header_only=True) for relative in sorted(headers)}
         config_path = workspace / ".kairos" / "workshop.config.json"
         machine_root = config_path.parent.resolve()
@@ -659,6 +679,7 @@ def initialize_project(
                 "workshop.config.json",
                 "project-intake/compile_commands.json",
                 "project-intake/PROJECT_BUILD_AUTHORITY.cmake",
+                "project-intake/include-edges.json",
                 "project-intake.json",
             ],
             "header_extensions": sorted(HEADER_SUFFIXES),
@@ -674,6 +695,8 @@ def initialize_project(
                 "index_prefix_reset_marker": "**End of translation-unit membership",
                 "translation_unit_extensions": ["c", "cc", "cpp", "cxx", "cu"],
                 "include_ownership_section_id": "s-include-closure",
+                "include_edges_section_id": "s-include-edges",
+                "include_edges_file": "project-intake/include-edges.json",
             },
             "state_directory": ".state",
             "transaction_directory": "transactions",
@@ -694,6 +717,10 @@ def initialize_project(
             task_id=task_id,
             project_intent_sha256=project_intent_sha256,
         )
+        manifest["include_edge_topology"] = {
+            "edge_count": edge_payload["edge_count"],
+            "topology_sha256": edge_payload["topology_sha256"],
+        }
         manifest["workshop_config_sha256"] = _sha256(json.dumps(workshop_config, sort_keys=True, separators=(",", ":")).encode("utf-8"))
         atomic_write_json(config_path, workshop_config)
         atomic_write_json(intake_directory.parent / "project-intake.json", manifest)

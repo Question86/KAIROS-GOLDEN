@@ -367,6 +367,21 @@ def _run_heartbeat_locked(
     now = utc_now()
     if use_reconciliation:
         update_manifest(workspace, reconciliation, successful_paths, updated_at=now)
+    compiler_include_edge_projection: dict[str, Any] = {
+        "schema": "kairos-compiler-include-edge-projection/v1",
+        "configured": False,
+        "verified": True,
+        "edge_count": 0,
+        "topology_sha256": None,
+    }
+    if not failures:
+        try:
+            from .include_edges import project_compiler_include_edges
+
+            compiler_include_edge_projection = project_compiler_include_edges(workspace, database)
+        except Exception as exc:
+            failures.append({"path": "<compiler-include-edges>", "error": str(exc)})
+
     pending, failed = database.pending_counts()
     missing_sources = tuple(sorted((*reconciliation.missing, *goal_reconciliation.missing)))
     verified = not failures and not missing_sources and pending == 0 and failed == 0
@@ -396,6 +411,7 @@ def _run_heartbeat_locked(
         ),
         "promoted": [value["artifact_id"] for value in receipts],
         "promotion_receipts": [value["receipt_id"] for value in receipts],
+        "compiler_include_edges": compiler_include_edge_projection,
         "failures": failures,
         "missing_sources": list(missing_sources),
         "pending_count": pending,

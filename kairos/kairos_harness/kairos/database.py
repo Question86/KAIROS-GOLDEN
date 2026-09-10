@@ -488,6 +488,29 @@ CREATE TABLE IF NOT EXISTS graph_drift (
 CREATE INDEX IF NOT EXISTS idx_graph_drift_class ON graph_drift(classification, status);
 CREATE INDEX IF NOT EXISTS idx_graph_drift_subject ON graph_drift(subject);
 
+CREATE TABLE IF NOT EXISTS compiler_include_edges (
+    artifact_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL,
+    compiled_root TEXT NOT NULL,
+    including_file TEXT NOT NULL,
+    include_line INTEGER NOT NULL,
+    include_token TEXT NOT NULL,
+    delimiter TEXT NOT NULL,
+    resolved_target TEXT NOT NULL,
+    resolution_class TEXT NOT NULL,
+    compiler_variant INTEGER NOT NULL,
+    resolution_path TEXT NOT NULL,
+    evidence_target TEXT NOT NULL,
+    PRIMARY KEY (artifact_id, ordinal),
+    FOREIGN KEY (artifact_id) REFERENCES artifacts(artifact_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_compiler_include_edges_including
+ON compiler_include_edges(including_file, resolved_target);
+CREATE INDEX IF NOT EXISTS idx_compiler_include_edges_target
+ON compiler_include_edges(resolved_target, compiled_root);
+CREATE INDEX IF NOT EXISTS idx_compiler_include_edges_root
+ON compiler_include_edges(compiled_root, including_file);
+
 CREATE TABLE IF NOT EXISTS search_policy_violations (
     violation_id TEXT PRIMARY KEY,
     action_type TEXT NOT NULL,

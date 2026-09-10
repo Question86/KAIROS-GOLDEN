@@ -28,7 +28,10 @@ from .corpus import (
     GRAPH_PROJECTIONS,
     blueprint_inventory,
     build_corpus_manifest,
+    canonical_include_edges,
+    direct_include_edges,
     header_ownership,
+    include_topology_sha256,
     load_config,
     parsed_sections,
     verify_database_projection,
@@ -393,6 +396,8 @@ class WorkshopEngine:
         owners: dict[str, set[str]],
         *,
         updated_at: str,
+        include_edges: list[dict[str, Any]] | None = None,
+        topology_sha256: str | None = None,
     ) -> str:
         harness = str(self.config.kairos_harness)
         if harness not in sys.path:
@@ -403,30 +408,46 @@ class WorkshopEngine:
         metadata["revision"] = int(metadata["revision"]) + 1
         metadata["updated_at"] = updated_at
         authority = self.config.raw.get("source_authority") or {}
+
+        def replace_rows(body: str, section_id: str, rows: list[str]) -> str:
+            anchor = f'<a id="{section_id}"></a>'
+            start = body.find(anchor)
+            if start < 0:
+                raise WorkshopError("AUTHORITY_TOPOLOGY_INVALID", f"authority section is missing: {section_id}")
+            next_anchor = body.find('<a id="', start + len(anchor))
+            end = len(body) if next_anchor < 0 else next_anchor
+            section = body[start:end]
+            prefix_match = re.match(
+                rf'(?s)(<a id="{re.escape(section_id)}"></a>\n##[^\n]*\n\n> Capsule:[^\n]*\n\n)',
+                section,
+            )
+            if not prefix_match:
+                raise WorkshopError("AUTHORITY_TOPOLOGY_INVALID", f"authority section lacks canonical heading/capsule: {section_id}")
+            replacement = prefix_match.group(1) + "\n".join(rows) + "\n\n"
+            return body[:start] + replacement + body[end:]
+
         section_id = str(authority.get("include_ownership_section_id", ""))
         if not section_id:
             raise WorkshopError("AUTHORITY_TOPOLOGY_UNCONFIGURED", "include ownership authority section is not configured")
-        body = parsed.body
-        anchor = f'<a id="{section_id}"></a>'
-        start = body.find(anchor)
-        if start < 0:
-            raise WorkshopError("AUTHORITY_TOPOLOGY_INVALID", f"include ownership section is missing: {section_id}")
-        next_anchor = body.find('<a id="', start + len(anchor))
-        end = len(body) if next_anchor < 0 else next_anchor
-        section = body[start:end]
-        prefix_match = re.match(
-            rf'(?s)(<a id="{re.escape(section_id)}"></a>\n##[^\n]*\n\n> Capsule:[^\n]*\n\n)',
-            section,
-        )
-        if not prefix_match:
-            raise WorkshopError("AUTHORITY_TOPOLOGY_INVALID", "include ownership section lacks the canonical heading/capsule shape")
-        rows = [
+        owner_rows = [
             f"- `{header}` ← " + ", ".join(f"`{owner}`" for owner in sorted(header_owners))
             for header, header_owners in sorted(owners.items())
         ] or ["- none"]
-        replacement = prefix_match.group(1) + "\n".join(rows) + "\n\n"
-        updated_body = body[:start] + replacement + body[end:]
-        return frontmatter.render_frontmatter(metadata) + updated_body
+        body = replace_rows(parsed.body, section_id, owner_rows)
+        if include_edges is not None:
+            edge_section = str(authority.get("include_edges_section_id", ""))
+            if not edge_section or not topology_sha256:
+                raise WorkshopError("AUTHORITY_TOPOLOGY_UNCONFIGURED", "direct include-edge authority section/digest is not configured")
+            canonical = canonical_include_edges(include_edges)
+            edge_rows = [
+                f"Edge count: `{len(canonical)}`",
+                f"Topology SHA-256: `{topology_sha256}`",
+                "",
+                "Exact compiler-observed rows are retained in machine authority and the SQLite projection; this index binds them by count and digest.",
+            ]
+            body = replace_rows(body, edge_section, edge_rows)
+        return frontmatter.render_frontmatter(metadata) + body
+
 
     def _render_header_ownership_blueprint(
         self,
@@ -495,6 +516,19 @@ class WorkshopEngine:
             baseline_manifest["authority"]["translation_units"],
             overrides=overrides,
         )
+        edge_file = authority.get("include_edges_file")
+        work_edges: list[dict[str, Any]] | None = None
+        baseline_edges: list[dict[str, Any]] = []
+        edge_changed = False
+        if edge_file:
+            work_edges, edge_issues = direct_include_edges(
+                self.config,
+                baseline_manifest["authority"]["translation_units"],
+                overrides=overrides,
+            )
+            issues.extend(edge_issues)
+            baseline_edges = canonical_include_edges(baseline_manifest["authority"].get("include_edges", []))
+            edge_changed = work_edges != baseline_edges
         if issues:
             raise WorkshopError(
                 "AUTHORITY_TOPOLOGY_UNVERIFIED",
@@ -516,7 +550,7 @@ class WorkshopEngine:
                     "removed_headers": sorted(baseline_headers - current_headers),
                 },
             )
-        if owners == baseline_owners:
+        if owners == baseline_owners and not edge_changed:
             if stage:
                 state["authority_documents"] = []
                 state["topology_blueprints"] = []
@@ -583,14 +617,34 @@ class WorkshopEngine:
             baseline_authority.read_text(encoding="utf-8"),
             owners,
             updated_at=state["deterministic_updated_at"],
+            include_edges=work_edges,
+            topology_sha256=include_topology_sha256(work_edges or []) if work_edges is not None else None,
         )
         atomic_write_bytes(work_authority, rendered.encode("utf-8"))
         state["authority_documents"] = [relative]
+        if work_edges is not None and isinstance(edge_file, str):
+            payload = {
+                "schema": "kairos-compiler-include-edges/v1",
+                "edge_count": len(work_edges),
+                "topology_sha256": include_topology_sha256(work_edges),
+                "claim_boundary": "Direct compiler-observed include consumers are distinct from byte ownership and transitive compiled-root reachability.",
+                "edges": canonical_include_edges(work_edges),
+            }
+            atomic_write_json(root / "work" / "machine" / edge_file, payload)
+            state["machine_authority_files"] = sorted(set(state.get("machine_authority_files", [])) | {edge_file})
+            state["include_edge_authority"] = {
+                "path": edge_file,
+                "edge_count": payload["edge_count"],
+                "topology_sha256": payload["topology_sha256"],
+            }
         return {
             "document": relative,
             "baseline_owners": {key: sorted(value) for key, value in sorted(baseline_owners.items())},
             "work_owners": {key: sorted(value) for key, value in sorted(owners.items())},
             "updated_header_blueprints": topology_blueprints,
+            "direct_edge_changed": edge_changed,
+            "baseline_topology_sha256": include_topology_sha256(baseline_edges) if work_edges is not None else None,
+            "work_topology_sha256": include_topology_sha256(work_edges or []) if work_edges is not None else None,
         }
 
     @staticmethod
@@ -617,7 +671,7 @@ class WorkshopEngine:
         """
         live_path = self.config.machine_root / "project-intake.json"
         if not live_path.is_file():
-            state["machine_authority_files"] = []
+            state["machine_authority_files"] = sorted(set(state.get("machine_authority_files", [])))
             return None
         intake = read_json(live_path)
         if not isinstance(intake, dict) or intake.get("schema") != "kairos-project-intake/v1":
@@ -691,15 +745,23 @@ class WorkshopEngine:
                 )
                 changed_fields.append(f"header:{header}")
 
+        edge_stage = state.get("include_edge_authority")
+        if isinstance(edge_stage, dict) and isinstance(candidate.get("include_edge_topology"), dict):
+            candidate["include_edge_topology"] = {
+                "edge_count": int(edge_stage["edge_count"]),
+                "topology_sha256": str(edge_stage["topology_sha256"]),
+            }
+            changed_fields.append("include_edges")
+
         if not changed_fields:
-            state["machine_authority_files"] = []
+            state["machine_authority_files"] = sorted(set(state.get("machine_authority_files", [])))
             return None
 
         baseline_machine = root / "baseline" / "machine" / "project-intake.json"
         work_machine = root / "work" / "machine" / "project-intake.json"
         copy_exact(live_path, baseline_machine)
         atomic_write_json(work_machine, candidate)
-        state["machine_authority_files"] = ["project-intake.json"]
+        state["machine_authority_files"] = sorted(set(state.get("machine_authority_files", [])) | {"project-intake.json"})
 
         prospective_records = json.loads(json.dumps(baseline_manifest["records"]))
         for relative, change in changes.items():
@@ -998,10 +1060,21 @@ class WorkshopEngine:
                 raise WorkshopError("SHADOW_PROMOTION_FAILED", f"shadow topology promotion was not verified: {name}", details=receipt)
             receipts.append(receipt)
             entries.append(shadow_entry)
+        include_edge_projection = None
+        edge_stage = state.get("include_edge_authority")
+        if isinstance(edge_stage, dict):
+            include_module = importlib.import_module("kairos.include_edges")
+            include_edge_projection = include_module.project_compiler_include_edges(
+                shadow,
+                database,
+                authority_path=root / "work" / "machine" / str(edge_stage["path"]),
+            )
+            if not include_edge_projection.get("verified"):
+                raise WorkshopError("SHADOW_INCLUDE_EDGE_PROJECTION_FAILED", "shadow include-edge projection was not verified", details=include_edge_projection)
         summary, issues = verify_database_projection(self.config, entries, database_path=shadow / ".kairos" / "kairos.db")
         if issues:
             raise WorkshopError("SHADOW_PROJECTION_MISMATCH", "shadow KAIROS projection is not exact", details=issues)
-        return {"adapter": "native", "receipts": receipts, "database": summary, "shadow_workspace": str(shadow)}
+        return {"adapter": "native", "receipts": receipts, "database": summary, "compiler_include_edges": include_edge_projection, "shadow_workspace": str(shadow)}
 
     def _shadow_fixture(self, root: Path, state: dict[str, Any], baseline_manifest: dict[str, Any]) -> dict[str, Any]:
         if not self.config.raw.get("test_mode"):

@@ -163,6 +163,8 @@ def _render_source_index(
     survey: UniversalSurvey,
     *,
     header_owners: dict[str, list[str]],
+    include_edges: list[dict[str, Any]] | None = None,
+    include_topology_sha256: str = "",
     workspace_id: str,
     updated_at: str,
 ) -> str:
@@ -176,6 +178,13 @@ def _render_source_index(
         f"- `{header}` ← " + ", ".join(f"`{owner}`" for owner in owners)
         for header, owners in sorted(header_owners.items())
     ) or "- none"
+    canonical_edges = include_edges or []
+    edge_body = (
+        f"Edge count: `{len(canonical_edges)}`\n"
+        f"Topology SHA-256: `{include_topology_sha256 or 'none'}`\n\n"
+        "Exact compiler-observed rows are retained in machine authority and the SQLite projection; "
+        "this human-readable index binds them by count and digest without duplicating the graph."
+    )
     metadata = {
         "schema": "kairos-context/v1",
         "id": "PROJECT_SOURCE_INDEX",
@@ -195,6 +204,7 @@ def _render_source_index(
         "answers": [
             {"intent": "membership", "question": "Which source files are governed by this project?", "target": "s-project-membership", "language": "en"},
             {"intent": "dependency", "question": "Which C-family headers are compiler-reached?", "target": "s-include-closure", "language": "en"},
+            {"intent": "dependency", "question": "Which direct C-family include edges are compiler-observed?", "target": "s-include-edges", "language": "en"},
         ],
         "refs": {},
         "search_contract": [
@@ -216,6 +226,7 @@ def _render_source_index(
         {"id": "s-authority", "title": "SOURCE AUTHORITY", "capsule": "Membership is explicit and ecosystem-bounded.", "content": "Detected ecosystems: " + ", ".join(f"`{value}`" for value in survey.ecosystems)},
         {"id": "s-project-membership", "title": "PROJECT MEMBERSHIP", "capsule": "The Workshop and human-readable source inventories describe the same exact set.", "content": membership},
         {"id": "s-include-closure", "title": "C-FAMILY INCLUDE CLOSURE", "capsule": "Only compiler-resolved project-local headers and their owning translation units are listed.", "content": include_rows},
+        {"id": "s-include-edges", "title": "DIRECT COMPILER INCLUDE EDGES", "capsule": "Direct include consumers are distinct from transitive compiled roots and byte owners.", "content": edge_body},
         {"id": "s-boundary", "title": "CLAIM BOUNDARY", "capsule": "Static source membership is not promoted into invented dependency or build claims.", "content": "Python/JS/TS/Rust/Go/JVM/.NET/Ruby/PHP are governed as exact project-local source files. C/C++/CUDA translation-unit and header membership remains compiler-backed and fail-closed."},
     ])
 
@@ -235,7 +246,7 @@ def _membership_authority(paths: list[str]) -> str:
 def _c_family_evidence(project_root: Path, compile_commands: Path | None):
     c_sources = [source for source in project_root.rglob("*") if source.is_file() and source.suffix.casefold() in {".c", ".cc", ".cpp", ".cxx", ".cu"}]
     if not c_sources:
-        return None, {}
+        return None, {}, None
     if compile_commands is None:
         raise KickstartError("C_FAMILY_COMPILER_AUTHORITY_REQUIRED", "C-family source exists but compiler authority was not supplied")
     survey = survey_compile_commands(compile_commands, project_root, source_kind="compile_commands")
@@ -246,7 +257,14 @@ def _c_family_evidence(project_root: Path, compile_commands: Path | None):
             "C-family compiler membership was found but its project-local include closure is not fully provable",
             details=unresolved,
         )
-    return survey, headers
+    from .include_edges import authority_payload, collect_include_edges, owners_from_edges
+    edges, edge_issues = collect_include_edges(project_root, survey)
+    if edge_issues:
+        raise KickstartError("INCLUDE_EDGE_AUTHORITY_UNVERIFIED", "direct compiler include-edge authority is not fully provable", details=edge_issues)
+    closure_owners = {relative: sorted(owners) for relative, (_, owners) in headers.items()}
+    if owners_from_edges(edges) != closure_owners:
+        raise KickstartError("INCLUDE_EDGE_CLOSURE_MISMATCH", "direct include edges disagree with transitive header closure")
+    return survey, headers, authority_payload(edges)
 
 
 def prepare_universal_workshop_binding(
@@ -268,12 +286,17 @@ def prepare_universal_workshop_binding(
     workspace = Path(workspace)
     reject_link_components(workspace, label="KAIROS workspace")
     workspace = workspace.resolve()
-    c_survey, headers = _c_family_evidence(project_root, compile_commands)
+    c_survey, headers, edge_payload = _c_family_evidence(project_root, compile_commands)
     header_owners = {relative: sorted(owners) for relative, (_, owners) in headers.items()}
 
     rendered = dict(documents)
     rendered["docs/PROJECT_SOURCE_INDEX.md"] = _render_source_index(
-        survey, header_owners=header_owners, workspace_id=workspace_id, updated_at=updated_at
+        survey,
+        header_owners=header_owners,
+        include_edges=(edge_payload or {}).get("edges", []),
+        include_topology_sha256=str((edge_payload or {}).get("topology_sha256", "")),
+        workspace_id=workspace_id,
+        updated_at=updated_at,
     )
     for relative, (path, owners) in sorted(headers.items()):
         rendered[f"code/{header_filename(relative)}"] = _render_header_blueprint(
@@ -308,6 +331,9 @@ def prepare_universal_workshop_binding(
         retained_compile = intake_dir / "compile_commands.json"
         _atomic_bytes(retained_compile, Path(compile_commands).read_bytes())
         machine_authorities.append("project-intake/compile_commands.json")
+        edge_authority_path = intake_dir / "include-edges.json"
+        _atomic_json(edge_authority_path, edge_payload)
+        machine_authorities.append("project-intake/include-edges.json")
 
     config_path = workspace / ".kairos" / "workshop.config.json"
     machine_root = config_path.parent.resolve()
@@ -393,6 +419,10 @@ def prepare_universal_workshop_binding(
             "index_prefix_reset_marker": "**End of governed source membership",
             "translation_unit_extensions": source_extensions,
             "include_ownership_section_id": "s-include-closure",
+            **({
+                "include_edges_section_id": "s-include-edges",
+                "include_edges_file": "project-intake/include-edges.json",
+            } if edge_payload is not None else {}),
         },
         "state_directory": ".state",
         "transaction_directory": "transactions",

@@ -32,7 +32,7 @@ class GraphError(RuntimeError):
 MAX_GRAPH_ROWS = 500
 DEFAULT_GRAPH_ROWS = 50
 
-_TABLES = ("graph_relations", "graph_contracts", "graph_artifacts", "graph_drift")
+_TABLES = ("graph_relations", "graph_contracts", "graph_artifacts", "graph_drift", "compiler_include_edges")
 
 # Column -> declared vocabulary. A stored value outside its set is a finding, never a
 # reason to reject a document, so the deviation is reported here instead of at promotion.
@@ -61,6 +61,21 @@ def _total(connection, sql: str, parameters: tuple[Any, ...]) -> int:
     return int(connection.execute(sql, parameters).fetchone()[0])
 
 
+def _available_tables(connection) -> set[str]:
+    """Return normalized graph tables present in this database.
+
+    ``compiler_include_edges`` is additive in alpha.5. Read-only alpha.4 framework
+    bundles and existing workspaces remain valid inputs; absence means the stronger
+    edge authority is unavailable, never that the known graph is corrupt.
+    """
+    return {
+        str(row[0])
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type IN ('table','view')"
+        ).fetchall()
+    }
+
+
 _SEARCH_FIELDS = {
     "graph_relations": ("subject", "predicate", "object", "scope"),
     "graph_contracts": ("contract_id", "kind", "subject", "failure_or_effect"),
@@ -68,6 +83,10 @@ _SEARCH_FIELDS = {
         "asset_id", "role", "operation", "producer_or_consumer", "schema_or_type",
     ),
     "graph_drift": ("drift_id", "historical", "subject", "classification", "status"),
+    "compiler_include_edges": (
+        "compiled_root", "including_file", "include_token", "resolved_target",
+        "resolution_class", "resolution_path",
+    ),
 }
 _RESULT_FIELDS = {
     "graph_relations": (
@@ -82,6 +101,10 @@ _RESULT_FIELDS = {
     ),
     "graph_drift": (
         "drift_id", "historical", "subject", "classification", "summary", "status",
+    ),
+    "compiler_include_edges": (
+        "compiled_root", "including_file", "include_line", "include_token", "delimiter",
+        "resolved_target", "resolution_class", "compiler_variant", "resolution_path",
     ),
 }
 _PRODUCER_PREDICATES = {"produces", "writes", "commits"}
@@ -170,7 +193,10 @@ def resolve_identity(connection, partial: str, *, limit: int = MAX_RESOLVED_CAND
     escaped = needle.replace("\\", r"\\").replace("%", r"\%").replace("_", r"\_")
     patterns = (needle, "%::" + escaped, "%/" + escaped)
     counts: dict[str, dict[str, Any]] = {}
+    available = _available_tables(connection)
     for table, fields in _SEARCH_FIELDS.items():
+        if table not in available:
+            continue
         for field in fields:
             clauses = " OR ".join(f"g.{field} LIKE ? ESCAPE '\\'" for _ in patterns)
             rows = connection.execute(
@@ -329,7 +355,11 @@ def query_graph_context(
     facts: list[dict[str, Any]] = []
     table_totals: dict[str, int] = {}
     unresolved_anchor_total = 0
+    available = _available_tables(connection)
     for table in _SEARCH_FIELDS:
+        if table not in available:
+            table_totals[table] = 0
+            continue
         where, parameters = _literal_where(table, identifiers)
         specificity_sql, specificity_parameters = _specificity_expression(
             table,
@@ -470,6 +500,7 @@ INVENTORY_TABLES = {
     "contracts": "graph_contracts",
     "artifacts": "graph_artifacts",
     "drift": "graph_drift",
+    "include_edges": "compiler_include_edges",
 }
 # the column each inventory is grouped by when no filter narrows it
 INVENTORY_GROUPING = {
@@ -477,6 +508,7 @@ INVENTORY_GROUPING = {
     "graph_contracts": "kind",
     "graph_artifacts": "operation",
     "graph_drift": "status",
+    "compiler_include_edges": "resolution_class",
 }
 
 
@@ -502,6 +534,20 @@ def inventory(
         )
     table = INVENTORY_TABLES[table_name]
     bound = _bounded(limit)
+    if table not in _available_tables(connection):
+        return {
+            "schema": "kairos-graph-inventory/v1",
+            "table": table_name,
+            "filter": {"field": field, "value": value} if field else None,
+            "available": False,
+            "total": 0,
+            "returned": 0,
+            "truncated": False,
+            "documents": 0,
+            "grouped_by": INVENTORY_GROUPING[table],
+            "groups": [],
+            "rows": [],
+        }
     where, parameters = "1=1", ()
     if field:
         if field not in _RESULT_FIELDS[table] and field != "artifact_id":
@@ -678,7 +724,14 @@ def graph_chase(
 def artifact_graph(connection, artifact_id: str, *, limit: int) -> dict[str, Any]:
     """Every declared structure of one document, table by table, with true totals."""
     result: dict[str, Any] = {"artifact_id": artifact_id, "tables": {}}
+    available = _available_tables(connection)
     for table in _TABLES:
+        if table not in available:
+            result["tables"][table] = {
+                "available": False, "total": 0, "returned": 0,
+                "truncated": False, "rows": [],
+            }
+            continue
         total = _total(
             connection, f"SELECT count(*) FROM {table} WHERE artifact_id=?", (artifact_id,)
         )

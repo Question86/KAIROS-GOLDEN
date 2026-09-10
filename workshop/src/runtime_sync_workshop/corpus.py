@@ -924,66 +924,73 @@ def _compiler_resolves_external_literal(
     return False
 
 
-def header_ownership(
+_INCLUDE_EDGE_KEYS = (
+    "compiled_root", "including_file", "include_line", "include_token", "delimiter",
+    "resolved_target", "resolution_class", "compiler_variant", "resolution_path",
+)
+
+
+def canonical_include_edges(edges: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: dict[tuple[Any, ...], dict[str, Any]] = {}
+    for raw in edges:
+        row = {
+            "compiled_root": str(raw["compiled_root"]).replace("\\", "/"),
+            "including_file": str(raw["including_file"]).replace("\\", "/"),
+            "include_line": int(raw["include_line"]),
+            "include_token": str(raw["include_token"]),
+            "delimiter": str(raw["delimiter"]),
+            "resolved_target": str(raw["resolved_target"]).replace("\\", "/"),
+            "resolution_class": str(raw["resolution_class"]),
+            "compiler_variant": int(raw["compiler_variant"]),
+            "resolution_path": str(raw["resolution_path"]),
+        }
+        rows[tuple(row[key] for key in _INCLUDE_EDGE_KEYS)] = row
+    return [rows[key] for key in sorted(rows)]
+
+
+def include_topology_sha256(edges: Iterable[dict[str, Any]]) -> str:
+    return sha256_text(json.dumps(canonical_include_edges(edges), ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+
+
+def _include_analysis(
     config: WorkshopConfig,
     translation_units: Iterable[str],
     *,
     overrides: dict[str, Path] | None = None,
-) -> tuple[dict[str, set[str]], list[dict[str, Any]]]:
-    """Return local header -> translation-unit owners under compiler-order semantics.
-
-    Kickstart-generated configurations retain ordered include-root sequences per
-    translation unit. Existing external include roots act as stop points so a later
-    local same-named header is not falsely projected. The optional overrides map lets
-    a Workshop transaction evaluate its work tree without mutating the live project.
-    """
+) -> tuple[dict[str, set[str]], list[dict[str, Any]], list[dict[str, Any]]]:
     overrides = overrides or {}
     literal_re = re.compile(r'(?m)^\s*#\s*include\s*([<"])([^>"\n]+)[>"]')
     any_re = re.compile(r'(?m)^\s*#\s*include\s+([^\n]+)')
     codebase = config.codebase_root.resolve()
-    queue: list[tuple[Path, str, dict[str, Any]]] = []
-    seen: set[tuple[Path, str, tuple[Path, ...], tuple[Path, ...], Any]] = set()
+    queue: list[tuple[Path, str, int, dict[str, Any]]] = []
     owners: dict[str, set[str]] = {}
+    edges: list[dict[str, Any]] = []
     issues: list[dict[str, Any]] = []
     ecosystem_map = config.raw.get("source_ecosystems") or {}
     if not isinstance(ecosystem_map, dict):
         raise WorkshopError("CONFIG_INVALID", "source_ecosystems must map governed source paths to ecosystem names")
     for relative in translation_units:
         relative = str(relative).replace("\\", "/")
-        # Legacy compiler-backed workspaces predate source_ecosystems and are all
-        # C-family. Universal workspaces must never run a C preprocessor scanner
-        # over Python/Rust/JS/etc. where '# include' or similar text can be a
-        # comment/string rather than preprocessor syntax.
         if ecosystem_map and str(ecosystem_map.get(relative, "")) != "c_family":
             continue
         relative_path = Path(relative)
         source_candidate = codebase / relative_path
-        if (
-            not relative
-            or _path_is_absolute(relative)
-            or _path_is_drive_relative(relative)
-            or ".." in relative_path.parts
-        ):
-            issues.append({
-                "code": "SOURCE_AUTHORITY_PATH_UNSAFE",
-                "message": f"translation-unit authority path is not a safe project-relative path: {relative}",
-                "details": {"owner": relative},
-            })
+        if not relative or _path_is_absolute(relative) or _path_is_drive_relative(relative) or ".." in relative_path.parts:
+            issues.append({"code": "SOURCE_AUTHORITY_PATH_UNSAFE", "message": f"translation-unit authority path is unsafe: {relative}"})
             continue
         try:
             reject_link_components(source_candidate, label="translation-unit source")
             logical = source_candidate.resolve()
             logical.relative_to(codebase)
         except (WorkshopError, OSError, ValueError) as exc:
-            issues.append({
-                "code": "SOURCE_AUTHORITY_PATH_UNSAFE",
-                "message": f"translation-unit authority path cannot be verified: {relative}",
-                "details": {"owner": relative, "error": str(exc)},
-            })
+            issues.append({"code": "SOURCE_AUTHORITY_PATH_UNSAFE", "message": f"translation-unit authority path cannot be verified: {relative}", "details": {"error": str(exc)}})
             continue
-        for variant in _translation_unit_include_variants(config, relative):
-            queue.append((logical, relative, variant))
-    def read_path(logical: Path) -> Path:
+        for variant_index, variant in enumerate(_translation_unit_include_variants(config, relative), 1):
+            queue.append((logical, relative, variant_index, variant))
+
+    seen: set[tuple[Path, str, int]] = set()
+
+    def physical_path(logical: Path) -> Path:
         try:
             relative = logical.resolve().relative_to(codebase).as_posix()
         except ValueError:
@@ -991,79 +998,55 @@ def header_ownership(
         return overrides.get(relative, logical)
 
     while queue:
-        logical_path, owner, variant = queue.pop(0)
-        visit = (
-            logical_path.resolve(), owner, variant["quote_roots"],
-            variant["angle_roots"], variant.get("compiler_probe"),
-        )
+        logical_path, compiled_root, variant_index, variant = queue.pop(0)
+        visit = (logical_path.resolve(), compiled_root, variant_index)
         if visit in seen:
             continue
         seen.add(visit)
-        physical = read_path(logical_path)
+        physical = physical_path(logical_path)
         try:
             reject_link_components(physical, label="include-graph input")
         except WorkshopError as exc:
-            issues.append({
-                "code": "INCLUDE_SCAN_LINK_UNSAFE",
-                "message": str(exc),
-                "details": {"logical": relative_posix(logical_path, codebase), "owner": owner},
-            })
+            issues.append({"code": "INCLUDE_SCAN_LINK_UNSAFE", "message": str(exc), "details": {"including": relative_posix(logical_path, codebase), "compiled_root": compiled_root}})
             continue
         if not physical.is_file():
-            issues.append({
-                "code": "INCLUDE_SCAN_INPUT_MISSING",
-                "message": f"include-graph input is missing: {physical}",
-                "details": {"logical": relative_posix(logical_path, codebase), "owner": owner},
-            })
+            issues.append({"code": "INCLUDE_SCAN_INPUT_MISSING", "message": f"include-graph input is missing: {physical}"})
             continue
         try:
             text = physical.read_text(encoding="utf-8")
         except UnicodeError as exc:
-            issues.append({
-                "code": "INCLUDE_SCAN_NON_UTF8",
-                "message": f"cannot scan includes in {physical}: {exc}",
-                "details": {"logical": relative_posix(logical_path, codebase), "owner": owner},
-            })
+            issues.append({"code": "INCLUDE_SCAN_NON_UTF8", "message": f"cannot scan includes in {physical}: {exc}"})
             continue
+        including_relative = relative_posix(logical_path, codebase)
         literal_starts = {match.start() for match in literal_re.finditer(text)}
         for match in any_re.finditer(text):
             if match.start() not in literal_starts:
                 issues.append({
                     "code": "DYNAMIC_INCLUDE_UNSUPPORTED",
-                    "message": "preprocessor-computed include cannot be proven by the configured static dependency authority",
-                    "details": {
-                        "including": relative_posix(logical_path, codebase),
-                        "owner": owner,
-                        "include": match.group(1).strip(),
-                    },
+                    "message": "preprocessor-computed include cannot be proven by compiler include-edge authority",
+                    "details": {"including": including_relative, "compiled_root": compiled_root, "include": match.group(1).strip()},
                 })
         for match in literal_re.finditer(text):
             opener, include = match.group(1), match.group(2).strip()
+            delimiter = "quote" if opener == '"' else "angle"
+            include_line = text.count("\n", 0, match.start()) + 1
             include_path = Path(include.replace("\\", "/"))
             search_roots = variant["quote_roots"] if opener == '"' else variant["angle_roots"]
-            candidates: list[Path] = []
+            candidates: list[tuple[Path, str]] = []
             if opener == '"':
-                candidates.append(logical_path.parent / include_path)
-            candidates.extend(root / include_path for root in search_roots)
+                candidates.append((logical_path.parent / include_path, "including_directory"))
+            candidates.extend((root / include_path, f"{delimiter}_search_root:{index}") for index, root in enumerate(search_roots))
             selected_local: Path | None = None
             selected_external = False
-            unsafe_candidate = False
-            for candidate in candidates:
+            resolution_path = ""
+            unsafe = False
+            for candidate, candidate_role in candidates:
                 try:
                     reject_link_components(candidate, label="include candidate")
                 except WorkshopError as exc:
-                    issues.append({
-                        "code": "INCLUDE_LINK_UNSAFE",
-                        "message": str(exc),
-                        "details": {"including": relative_posix(logical_path, codebase), "owner": owner},
-                    })
-                    unsafe_candidate = True
+                    issues.append({"code": "INCLUDE_LINK_UNSAFE", "message": str(exc), "details": {"including": including_relative, "compiled_root": compiled_root}})
+                    unsafe = True
                     break
-                except OSError:
-                    continue
-            if unsafe_candidate:
-                continue
-            for candidate in candidates:
                 try:
                     resolved = candidate.resolve(strict=True)
                 except OSError:
@@ -1074,63 +1057,92 @@ def header_ownership(
                     resolved.relative_to(codebase)
                 except ValueError:
                     selected_external = True
+                    resolution_path = candidate_role
                     break
                 if resolved.suffix.lower() in config.header_extensions:
                     selected_local = resolved
+                    resolution_path = candidate_role
                     break
-            if selected_local is not None and any(
-                selected_local.is_relative_to(root) for root in variant["idirafter_roots"]
-            ):
+            if unsafe:
+                continue
+            if selected_local is not None and any(selected_local.is_relative_to(root) for root in variant["idirafter_roots"]):
                 status, compiler_selected = _compiler_selected_literal(
-                    config, variant=variant, owner=owner, including=logical_path,
-                    opener=opener, include=include,
+                    config, variant=variant, owner=compiled_root, including=logical_path, opener=opener, include=include,
                 )
                 if status == "external":
                     selected_local = None
                     selected_external = True
+                    resolution_path = "compiler_probe"
                 elif status == "local" and compiler_selected is not None:
                     selected_local = compiler_selected
+                    resolution_path = "compiler_probe"
                 else:
-                    issues.append({
-                        "code": "INCLUDE_SELECTION_AMBIGUOUS",
-                        "message": f"cannot prove compiler selection for -idirafter include: {include}",
-                        "details": {"including": relative_posix(logical_path, codebase), "owner": owner},
-                    })
+                    issues.append({"code": "INCLUDE_SELECTION_AMBIGUOUS", "message": f"cannot prove compiler selection for -idirafter include: {include}", "details": {"including": including_relative, "compiled_root": compiled_root}})
                     continue
-
-            if selected_local is None:
-                if opener == '"' and not selected_external:
-                    status, compiler_selected = _compiler_selected_literal(
-                        config, variant=variant, owner=owner, including=logical_path,
-                        opener=opener, include=include,
-                    )
-                    if status == "external":
-                        selected_external = True
-                    elif status == "local" and compiler_selected is not None:
-                        selected_local = compiler_selected
-                if selected_local is None:
-                    if opener == '"' and not selected_external:
-                        issues.append({
-                            "code": "RUNTIME_INCLUDE_UNRESOLVED",
-                            "message": f"quoted project include cannot be resolved: {include}",
-                            "details": {"including": relative_posix(logical_path, codebase), "owner": owner},
-                        })
+            if selected_local is None and opener == '"' and not selected_external:
+                status, compiler_selected = _compiler_selected_literal(
+                    config, variant=variant, owner=compiled_root, including=logical_path, opener=opener, include=include,
+                )
+                if status == "external":
+                    selected_external = True
+                    resolution_path = "compiler_probe"
+                elif status == "local" and compiler_selected is not None:
+                    selected_local = compiler_selected
+                    resolution_path = "compiler_probe"
+                elif status == "missing":
+                    issues.append({"code": "RUNTIME_INCLUDE_UNRESOLVED", "message": f"quoted project include cannot be resolved: {include}", "details": {"including": including_relative, "compiled_root": compiled_root}})
                     continue
-            if selected_local.suffix.lower() not in config.header_extensions:
-                issues.append({
-                    "code": "LOCAL_INCLUDE_SUFFIX_UNSUPPORTED",
-                    "message": f"project-local compiler-selected include has unsupported suffix: {include}",
-                    "details": {
-                        "including": relative_posix(logical_path, codebase),
-                        "owner": owner,
-                        "selected": relative_posix(selected_local, codebase),
-                    },
+            if selected_local is not None:
+                if selected_local.suffix.lower() not in config.header_extensions:
+                    issues.append({"code": "LOCAL_INCLUDE_SUFFIX_UNSUPPORTED", "message": f"project-local include has unsupported suffix: {include}"})
+                    continue
+                target = relative_posix(selected_local, codebase)
+                owners.setdefault(target, set()).add(compiled_root)
+                edges.append({
+                    "compiled_root": compiled_root,
+                    "including_file": including_relative,
+                    "include_line": include_line,
+                    "include_token": include,
+                    "delimiter": delimiter,
+                    "resolved_target": target,
+                    "resolution_class": "local",
+                    "compiler_variant": variant_index,
+                    "resolution_path": resolution_path or "compiler_order",
                 })
-                continue
-            relative = relative_posix(selected_local, codebase)
-            owners.setdefault(relative, set()).add(owner)
-            queue.append((selected_local, owner, variant))
+                queue.append((selected_local, compiled_root, variant_index, variant))
+            elif selected_external:
+                edges.append({
+                    "compiled_root": compiled_root,
+                    "including_file": including_relative,
+                    "include_line": include_line,
+                    "include_token": include,
+                    "delimiter": delimiter,
+                    "resolved_target": include,
+                    "resolution_class": "external",
+                    "compiler_variant": variant_index,
+                    "resolution_path": resolution_path or "compiler_order",
+                })
+    return owners, canonical_include_edges(edges), issues
+
+
+def header_ownership(
+    config: WorkshopConfig,
+    translation_units: Iterable[str],
+    *,
+    overrides: dict[str, Path] | None = None,
+) -> tuple[dict[str, set[str]], list[dict[str, Any]]]:
+    owners, _, issues = _include_analysis(config, translation_units, overrides=overrides)
     return owners, issues
+
+
+def direct_include_edges(
+    config: WorkshopConfig,
+    translation_units: Iterable[str],
+    *,
+    overrides: dict[str, Path] | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    _, edges, issues = _include_analysis(config, translation_units, overrides=overrides)
+    return edges, issues
 
 
 def header_closure(config: WorkshopConfig, translation_units: Iterable[str]) -> tuple[set[str], list[dict[str, Any]]]:
@@ -1164,6 +1176,98 @@ def declared_header_ownership(config: WorkshopConfig) -> dict[str, set[str]] | N
             value.replace("\\", "/") for value in owner_re.findall(match.group("owners"))
         }
     return result
+
+
+
+def _include_edge_config(config: WorkshopConfig) -> tuple[str, str] | None:
+    authority = config.raw.get("source_authority") or {}
+    if not isinstance(authority, dict):
+        raise WorkshopError("CONFIG_INVALID", "source_authority must be an object")
+    relative = authority.get("include_edges_file")
+    section_id = authority.get("include_edges_section_id")
+    if relative is None and section_id is None:
+        return None
+    if not isinstance(relative, str) or not relative.strip() or not isinstance(section_id, str) or not section_id.strip():
+        raise WorkshopError("CONFIG_INVALID", "include edge authority requires include_edges_file and include_edges_section_id")
+    path = _machine_relative_path(relative, "include_edges_file", base=config.machine_root)
+    return path.relative_to(config.machine_root).as_posix(), section_id
+
+
+def load_include_edge_authority(config: WorkshopConfig) -> dict[str, Any] | None:
+    configured = _include_edge_config(config)
+    if configured is None:
+        return None
+    relative, _ = configured
+    path = config.machine_root / relative
+    payload = read_json(path)
+    if not isinstance(payload, dict) or payload.get("schema") != "kairos-compiler-include-edges/v1":
+        raise WorkshopError("INCLUDE_EDGE_AUTHORITY_INVALID", f"invalid include-edge authority: {path}")
+    raw_edges = payload.get("edges")
+    if not isinstance(raw_edges, list) or any(not isinstance(row, dict) for row in raw_edges):
+        raise WorkshopError("INCLUDE_EDGE_AUTHORITY_INVALID", "include-edge authority edges must be an object array")
+    try:
+        edges = canonical_include_edges(raw_edges)
+    except Exception as exc:
+        raise WorkshopError("INCLUDE_EDGE_AUTHORITY_INVALID", f"cannot canonicalize include-edge authority: {exc}") from exc
+    digest = include_topology_sha256(edges)
+    if raw_edges != edges:
+        raise WorkshopError("INCLUDE_EDGE_AUTHORITY_NONCANONICAL", "include-edge authority is not canonically ordered")
+    if payload.get("topology_sha256") != digest or int(payload.get("edge_count", -1)) != len(edges):
+        raise WorkshopError("INCLUDE_EDGE_AUTHORITY_DIGEST_MISMATCH", "include-edge authority digest/count differs from canonical rows")
+    return {**payload, "edges": edges}
+
+
+def declared_include_edges(config: WorkshopConfig) -> dict[str, Any] | None:
+    configured = _include_edge_config(config)
+    if configured is None:
+        return None
+    _, section_id = configured
+    text = normalized_text(config.dataflow_index.read_text(encoding="utf-8"))
+    marker = f'<a id="{section_id}"></a>'
+    start = text.find(marker)
+    if start < 0:
+        raise WorkshopError("DATAFLOW_INCLUDE_EDGE_SECTION_MISSING", f"configured include-edge section is missing: {section_id}")
+    next_anchor = text.find('<a id="', start + len(marker))
+    section = text[start:] if next_anchor < 0 else text[start:next_anchor]
+    count_match = re.search(r"Edge count:\s*`([0-9]+)`", section)
+    digest_match = re.search(r"Topology SHA-256:\s*`([0-9a-f]{64})`", section)
+    if not count_match or not digest_match:
+        raise WorkshopError("DATAFLOW_INCLUDE_EDGE_DIGEST_MISSING", "include-edge section has no edge count/topology digest")
+    return {
+        "topology_sha256": digest_match.group(1),
+        "edge_count": int(count_match.group(1)),
+    }
+
+
+def verify_include_edge_database(config: WorkshopConfig, edges: list[dict[str, Any]], *, database_path: Path | None = None) -> list[dict[str, Any]]:
+    database_path = (database_path or config.kairos_database).resolve()
+    connection = sqlite3.connect(f"file:{database_path.as_posix()}?mode=ro", uri=True)
+    connection.row_factory = sqlite3.Row
+    try:
+        tables = {str(row[0]) for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if "compiler_include_edges" not in tables:
+            return [{"code": "DATABASE_INCLUDE_EDGE_TABLE_MISSING", "message": "KAIROS database has no compiler_include_edges table"}]
+        actual = [
+            {
+                "compiled_root": row["compiled_root"],
+                "including_file": row["including_file"],
+                "include_line": int(row["include_line"]),
+                "include_token": row["include_token"],
+                "delimiter": row["delimiter"],
+                "resolved_target": row["resolved_target"],
+                "resolution_class": row["resolution_class"],
+                "compiler_variant": int(row["compiler_variant"]),
+                "resolution_path": row["resolution_path"],
+            }
+            for row in connection.execute(
+                "SELECT compiled_root,including_file,include_line,include_token,delimiter,resolved_target,resolution_class,compiler_variant,resolution_path FROM compiler_include_edges WHERE artifact_id='PROJECT_SOURCE_INDEX' ORDER BY ordinal"
+            ).fetchall()
+        ]
+    finally:
+        connection.close()
+    if actual != edges:
+        return [{"code": "DATABASE_INCLUDE_EDGE_MISMATCH", "message": "compiler_include_edges projection differs from machine authority", "details": {"expected_count": len(edges), "actual_count": len(actual)}}]
+    return []
 
 
 def _section_capsule(content: str) -> str:
@@ -1633,6 +1737,30 @@ def build_corpus_manifest(config: WorkshopConfig, *, verify_database: bool = Tru
     include_owners, include_issues = header_ownership(config, dataflow)
     include_headers = set(include_owners)
     issues.extend(include_issues)
+    include_edges: list[dict[str, Any]] = []
+    include_edge_authority = load_include_edge_authority(config)
+    if include_edge_authority is not None:
+        include_edges, include_edge_issues = direct_include_edges(config, dataflow)
+        issues.extend(include_edge_issues)
+        if include_edges != include_edge_authority["edges"]:
+            issues.append({
+                "code": "INCLUDE_EDGE_AUTHORITY_MISMATCH",
+                "message": "live compiler-observed direct include edges differ from machine authority",
+                "details": {
+                    "expected_digest": include_edge_authority["topology_sha256"],
+                    "actual_digest": include_topology_sha256(include_edges),
+                },
+            })
+        declared_edges = declared_include_edges(config)
+        if (
+            declared_edges is None
+            or declared_edges["edge_count"] != include_edge_authority["edge_count"]
+            or declared_edges["topology_sha256"] != include_edge_authority["topology_sha256"]
+        ):
+            issues.append({
+                "code": "INCLUDE_EDGE_INDEX_MISMATCH",
+                "message": "PROJECT_SOURCE_INDEX direct include-edge digest/count differs from machine authority",
+            })
     declared_owners = declared_header_ownership(config)
     if declared_owners is not None:
         normalized_actual = {key: set(value) for key, value in include_owners.items()}
@@ -1741,6 +1869,8 @@ def build_corpus_manifest(config: WorkshopConfig, *, verify_database: bool = Tru
             for source, summary in database_summary.items():
                 if source in records:
                     records[source]["database"] = summary
+            if include_edge_authority is not None:
+                issues.extend(verify_include_edge_database(config, include_edge_authority["edges"]))
         except Exception as exc:
             issues.append({
                 "code": "DATABASE_VERIFICATION_ERROR",
@@ -1753,6 +1883,10 @@ def build_corpus_manifest(config: WorkshopConfig, *, verify_database: bool = Tru
         "translation_units": dataflow,
         "include_headers": sorted(include_headers),
         "include_owners": {key: sorted(value) for key, value in sorted(include_owners.items())},
+        **({
+            "include_edges": include_edges,
+            "include_topology_sha256": include_edge_authority["topology_sha256"],
+        } if include_edge_authority is not None else {}),
         "paired_headers": sorted(paired_headers),
         "additional_header_owners": dict(sorted(config.additional_header_owners.items())),
         "header_only_blueprints": dict(sorted(config.header_only_blueprints.items())),
@@ -1789,6 +1923,7 @@ def build_corpus_manifest(config: WorkshopConfig, *, verify_database: bool = Tru
             "translation_unit_blueprints": sum(entry.source_relative is not None for entry in entries),
             "header_only_blueprints": sum(entry.source_relative is None for entry in entries),
             "include_headers": len(include_headers),
+            "include_edges": len(include_edges) if include_edge_authority is not None else 0,
             "paired_headers": len(paired_headers),
             "verified_database_artifacts": len(database_summary),
             "auxiliary_documents": len(config.auxiliary_documents),

@@ -355,6 +355,23 @@ class AuthorityMigration:
             dynamic = [item for item in unresolved if item.get("reason") == "dynamic_or_macro_include"]
             code = "DYNAMIC_INCLUDE_UNSUPPORTED" if dynamic else "QUOTED_INCLUDE_UNRESOLVED"
             raise WorkshopError(code, "candidate include closure is not fully provable", details=unresolved)
+        from kickstart.include_edges import authority_payload, collect_include_edges, owners_from_edges
+        candidate_include_edges, edge_issues = collect_include_edges(candidate_root, survey)
+        if edge_issues:
+            raise WorkshopError(
+                "INCLUDE_EDGE_AUTHORITY_UNVERIFIED",
+                "candidate direct compiler include-edge authority is not fully provable",
+                details=edge_issues,
+            )
+        candidate_edge_payload = authority_payload(candidate_include_edges)
+        candidate_closure_owners = {
+            relative: sorted(owners) for relative, (_, owners) in sorted(headers.items())
+        }
+        if owners_from_edges(candidate_include_edges) != candidate_closure_owners:
+            raise WorkshopError(
+                "INCLUDE_EDGE_CLOSURE_MISMATCH",
+                "candidate direct include edges disagree with transitive compiler header closure",
+            )
         workspace_id, goal_id, milestone_id, task_id, project_intent_sha256 = self._scope()
         created_at = utc_now()
         generated = render_blueprints(
@@ -376,6 +393,8 @@ class AuthorityMigration:
             milestone_id=milestone_id,
             updated_at=created_at,
             header_closure={relative: owners for relative, (_, owners) in headers.items()},
+            include_edges=candidate_include_edges,
+            include_topology_sha256=candidate_edge_payload["topology_sha256"],
         )
         candidate_sources = sorted(unit.relative_path for unit in survey.units)
         candidate_headers = sorted(headers)
@@ -562,6 +581,9 @@ class AuthorityMigration:
                 "candidate_include_owners": {
                     relative: sorted(owners) for relative, (_, owners) in sorted(headers.items())
                 },
+                "candidate_include_edges": candidate_edge_payload["edges"],
+                "candidate_include_topology_sha256": candidate_edge_payload["topology_sha256"],
+                "candidate_include_edge_count": candidate_edge_payload["edge_count"],
                 "candidate_include_roots": [
                     self._map_root(path, candidate_root, root / "work" / "candidate").as_posix()
                     for path in survey.include_roots
@@ -921,6 +943,10 @@ class AuthorityMigration:
             }
             for relative in state["candidate_headers"]
         }
+        final_intake["include_edge_topology"] = {
+            "edge_count": int(state["candidate_include_edge_count"]),
+            "topology_sha256": str(state["candidate_include_topology_sha256"]),
+        }
         final_intake["blueprints"] = [
             {
                 "filename": state["candidate_records"][relative],
@@ -947,6 +973,19 @@ class AuthorityMigration:
         (machine / "project-intake").mkdir(parents=True, exist_ok=True)
         copy_exact(machine / "compile_commands.json", machine / "project-intake" / "compile_commands.json")
         copy_exact(machine / "PROJECT_BUILD_AUTHORITY.cmake", machine / "project-intake" / "PROJECT_BUILD_AUTHORITY.cmake")
+        atomic_write_json(
+            machine / "project-intake" / "include-edges.json",
+            {
+                "schema": "kairos-compiler-include-edges/v1",
+                "edge_count": int(state["candidate_include_edge_count"]),
+                "topology_sha256": str(state["candidate_include_topology_sha256"]),
+                "claim_boundary": (
+                    "Direct compiler-observed include consumers are distinct from byte ownership "
+                    "and transitive compiled-root reachability."
+                ),
+                "edges": state["candidate_include_edges"],
+            },
+        )
 
         state["state"] = "PREPARED"
         state["prepared_active"] = prepared_active
@@ -1042,6 +1081,7 @@ class AuthorityMigration:
         atomic_write_json(machine_verify / "workshop.config.json", verify_config)
         copy_exact(root / "work" / "machine" / "project-intake" / "compile_commands.json", machine_verify / "project-intake" / "compile_commands.json")
         copy_exact(root / "work" / "machine" / "project-intake" / "PROJECT_BUILD_AUTHORITY.cmake", machine_verify / "project-intake" / "PROJECT_BUILD_AUTHORITY.cmake")
+        copy_exact(root / "work" / "machine" / "project-intake" / "include-edges.json", machine_verify / "project-intake" / "include-edges.json")
         verify_intake = read_json(root / "work" / "machine" / "project-intake.json")
         verify_intake = json.loads(json.dumps(verify_intake))
         candidate_root = root / "work" / "candidate"
@@ -1088,6 +1128,22 @@ class AuthorityMigration:
                     row["facts"]["path"] = (candidate_root / str(relative)).as_posix()
         atomic_write_json(machine_verify / "project-intake.json", verify_intake)
 
+        # Project exact direct edges into the isolated candidate database before the
+        # corpus postcheck. This is the same mechanical projection the live heartbeat
+        # will perform after apply.
+        include_module = importlib.import_module("kairos.include_edges")
+        include_projection = include_module.project_compiler_include_edges(
+            shadow,
+            database,
+            authority_path=machine_verify / "project-intake" / "include-edges.json",
+        )
+        if not include_projection.get("verified"):
+            raise WorkshopError(
+                "AUTHORITY_MIGRATION_INCLUDE_EDGE_SHADOW_FAILED",
+                "candidate include-edge SQLite projection was not verified",
+                details=include_projection,
+            )
+
         # Assemble candidate managed active docs from shadow and external active docs.
         external_final = root / "work" / "external-final"
         candidate_config = load_config(machine_verify / "workshop.config.json")
@@ -1101,6 +1157,7 @@ class AuthorityMigration:
             "receipts": receipts,
             "candidate_package_sha256": candidate_manifest["package_sha256"],
             "candidate_counts": candidate_manifest["counts"],
+            "include_edge_projection": include_projection,
         }
         state["verified_work_package_sha256"] = work_package["package_sha256"]
         self.engine._save_transaction(root, state, event="AUTHORITY_SHADOW_VERIFIED", details=state["shadow"])

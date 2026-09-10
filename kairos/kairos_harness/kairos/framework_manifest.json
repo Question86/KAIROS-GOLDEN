@@ -1,9 +1,9 @@
 {
   "authority_note": "Framework Markdown owns claims; this database is a hash-verified read-only retrieval projection.",
   "build_epoch": "2000-01-01T00:00:00Z",
+  "database_content_sha256": "faf49c1359479915cb9c881c9f1acfd0d3f567e8d071d47d07fd6ab7b0571926",
   "database_file": "framework.db",
-  "database_sha256": "22d79a1a0e12ad346d67d71339677fbc39bd0c55d29bfa0b8b52ccd1819e01f5",
-  "database_content_sha256": "fe69fb3146d20892c4f2a84d2aab60667af632561515229f5af6c51b91ca248a",
+  "database_sha256": "1efd995337946326b2ecbfb8ac2793b5253fe54cb5e76fd101d2bc6f7bf6960d",
   "derived": true,
   "document_count": 24,
   "documents": [
@@ -203,6 +203,6 @@
     }
   ],
   "schema": "kairos-framework-index/v1",
-  "version": "0.1.0-alpha.4",
+  "version": "0.1.0-alpha.5",
   "workspace_id": "KAIROS_FRAMEWORK"
 }
